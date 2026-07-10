@@ -1,0 +1,230 @@
+import { describe, expect, it } from "vitest";
+import {
+  applyChoiceEffects,
+  choiceConditionsPass,
+  createFlag,
+  createFlagCondition,
+  createFlagEffect,
+  createChoice,
+  createDefaultProject,
+  createParameter,
+  createParameterCondition,
+  createParameterEffect,
+  createRuntimeState,
+  createScene,
+  migrateProject,
+  resolveChoiceTarget
+} from "./project";
+
+describe("project domain", () => {
+  it("migrates version 1 projects", () => {
+    const project = createDefaultProject();
+
+    expect(migrateProject(project)).toEqual(project);
+  });
+
+  it("adds v0.2 defaults to old v0.1 projects", () => {
+    const oldProject = {
+      version: 1,
+      projectName: "Old project",
+      startSceneId: "scene_old",
+      scenes: [
+        {
+          id: "scene_old",
+          title: "Old scene",
+          text: "Old text",
+          position: { x: 0, y: 0 },
+          choices: [
+            {
+              id: "choice_old",
+              text: "Continue",
+              targetNodeId: "scene_old"
+            }
+          ]
+        }
+      ]
+    };
+
+    const migratedProject = migrateProject(oldProject);
+
+    expect(migratedProject.parameters).toEqual([]);
+    expect(migratedProject.flags).toEqual([]);
+    expect(migratedProject.audio.backgroundMusicPath).toBe("");
+    expect(migratedProject.audio.musicFadeInSeconds).toBe(0.8);
+    expect(migratedProject.theme.backgroundColor).toBe("#eee8dc");
+    expect(migratedProject.mediaLibrary.folders).toEqual([]);
+    expect(migratedProject.storyBible.premise).toBe("");
+    expect(migratedProject.storyBible.chapterPlan).toEqual([]);
+    expect(migratedProject.scenes[0].imagePath).toBe("");
+    expect(migratedProject.scenes[0].soundPath).toBe("");
+    expect(migratedProject.scenes[0].soundVolume).toBe(1);
+    expect(migratedProject.scenes[0].layoutType).toBe("imageTop");
+    expect(migratedProject.scenes[0].nodeColor).toBe("slate");
+    expect(migratedProject.scenes[0].style.textScale).toBe(1);
+    expect(migratedProject.scenes[0].choices[0].effects).toEqual([]);
+    expect(migratedProject.scenes[0].choices[0].conditions).toEqual([]);
+    expect(migratedProject.scenes[0].choices[0].conditionFailBehavior).toBe(
+      "disabled"
+    );
+    expect(migratedProject.scenes[0].choices[0].useMultipleOutcomes).toBe(false);
+    expect(migratedProject.scenes[0].choices[0].outcomes).toEqual([
+      {
+        id: "outcome_choice_old",
+        targetSceneId: "scene_old",
+        percent: 100
+      }
+    ]);
+  });
+
+  it("keeps story bible memory when loading a saved project", () => {
+    const project = createDefaultProject();
+    project.storyBible = {
+      ...project.storyBible,
+      premise: "A pilot uncovers a conspiracy in deep space.",
+      protagonist: "Captain Mira",
+      openMysteries: ["Who sabotaged Orion?"],
+      chapterPlan: [
+        {
+          id: "chapter_1",
+          title: "Signal",
+          summary: "Mira hears the impossible distress call.",
+          targetSceneRange: "1-20",
+          status: "inProgress"
+        }
+      ]
+    };
+
+    const migratedProject = migrateProject(JSON.parse(JSON.stringify(project)));
+
+    expect(migratedProject.storyBible.premise).toBe(
+      "A pilot uncovers a conspiracy in deep space."
+    );
+    expect(migratedProject.storyBible.openMysteries).toEqual([
+      "Who sabotaged Orion?"
+    ]);
+    expect(migratedProject.storyBible.chapterPlan[0].title).toBe("Signal");
+  });
+
+  it("creates simple scene and choice ids", () => {
+    const sceneA = createScene(1);
+    const sceneB = createScene(2);
+    const choice = createChoice(sceneA.id, "choice_7");
+
+    expect(sceneA.id).toBe("scene_1");
+    expect(sceneB.id).toBe("scene_2");
+    expect(choice.id).toBe("choice_7");
+  });
+
+  it("keeps choices connected by targetNodeId", () => {
+    const sceneA = createScene(1);
+    const sceneB = createScene(2);
+    sceneA.choices = [createChoice(sceneB.id)];
+    sceneB.title = "Renamed target";
+
+    expect(sceneA.choices[0].targetNodeId).toBe(sceneB.id);
+  });
+
+  it("chooses probability outcomes by percent", () => {
+    const project = createDefaultProject();
+    project.scenes = [createScene(1), createScene(2), createScene(3), createScene(4)];
+    project.startSceneId = "scene_1";
+    const choice = createChoice("scene_2");
+    choice.useMultipleOutcomes = true;
+    choice.outcomes = [
+      { id: "outcome_1", targetSceneId: "scene_2", percent: 70 },
+      { id: "outcome_2", targetSceneId: "scene_3", percent: 20 },
+      { id: "outcome_3", targetSceneId: "scene_4", percent: 10 }
+    ];
+
+    const originalRandom = Math.random;
+    Math.random = () => 0.75;
+    try {
+      expect(resolveChoiceTarget(choice, createRuntimeState(project))).toBe("scene_3");
+    } finally {
+      Math.random = originalRandom;
+    }
+  });
+
+  it("keeps scene layout positions when loading a saved project", () => {
+    const project = createDefaultProject();
+    project.scenes[0].style = {
+      ...project.scenes[0].style,
+      imageOffsetX: -420,
+      imageOffsetY: 690,
+      titleOffsetX: 360,
+      titleOffsetY: -510,
+      titleScale: 1.6,
+      textOffsetX: -330,
+      textOffsetY: 840,
+      textScale: 1.72,
+      choicesOffsetX: 270,
+      choicesOffsetY: 930,
+      choicesScale: 1.25
+    };
+
+    const migratedProject = migrateProject(JSON.parse(JSON.stringify(project)));
+
+    expect(migratedProject.scenes[0].style.imageOffsetY).toBe(690);
+    expect(migratedProject.scenes[0].style.titleOffsetX).toBe(360);
+    expect(migratedProject.scenes[0].style.titleOffsetY).toBe(-510);
+    expect(migratedProject.scenes[0].style.textOffsetY).toBe(840);
+    expect(migratedProject.scenes[0].style.textScale).toBe(1.72);
+    expect(migratedProject.scenes[0].style.choicesOffsetY).toBe(930);
+  });
+
+  it("repairs duplicate choice ids while keeping targetNodeId links", () => {
+    const rawProject = createDefaultProject();
+    rawProject.scenes = [createScene(1), createScene(2)];
+    rawProject.startSceneId = rawProject.scenes[0].id;
+    rawProject.scenes[0].choices = [createChoice(rawProject.scenes[1].id, "choice_1")];
+    rawProject.scenes[1].choices = [createChoice(rawProject.scenes[0].id, "choice_1")];
+
+    const migratedProject = migrateProject(rawProject);
+    const choiceIds = migratedProject.scenes.flatMap((scene) =>
+      scene.choices.map((choice) => choice.id)
+    );
+
+    expect(new Set(choiceIds).size).toBe(choiceIds.length);
+    expect(migratedProject.scenes[0].choices[0].targetNodeId).toBe("scene_2");
+    expect(migratedProject.scenes[1].choices[0].targetNodeId).toBe("scene_1");
+  });
+
+  it("checks parameter and flag conditions", () => {
+    const project = createDefaultProject();
+    const parameter = createParameter(1);
+    const flag = createFlag(1);
+    project.parameters = [{ ...parameter, initialValue: 100 }];
+    project.flags = [{ ...flag, defaultValue: true }];
+
+    const choice = createChoice(project.startSceneId);
+    choice.conditions = [
+      { ...createParameterCondition(parameter.id), operator: ">=", value: 100 },
+      { ...createFlagCondition(flag.id), expectedValue: true }
+    ];
+
+    expect(choiceConditionsPass(choice, createRuntimeState(project))).toBe(true);
+  });
+
+  it("applies parameter and flag effects", () => {
+    const project = createDefaultProject();
+    const parameter = createParameter(1);
+    const flag = createFlag(1);
+    project.parameters = [{ ...parameter, initialValue: 50 }];
+    project.flags = [{ ...flag, defaultValue: false }];
+
+    const choice = createChoice(project.startSceneId);
+    choice.effects = [
+      { ...createParameterEffect(parameter.id), operation: "add", value: 100 },
+      { ...createFlagEffect(flag.id), value: true }
+    ];
+
+    const nextState = applyChoiceEffects(
+      project,
+      createRuntimeState(project),
+      choice
+    );
+
+    expect(nextState.parameters[parameter.id]).toBe(150);
+    expect(nextState.flags[flag.id]).toBe(true);
+  });
+});
