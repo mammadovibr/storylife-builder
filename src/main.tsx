@@ -18,9 +18,18 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 
 async function registerOfflineApp() {
   try {
-    const registration = await navigator.serviceWorker.register("./sw.js", {
-      scope: "./"
+    const hadActiveController = Boolean(navigator.serviceWorker.controller);
+    let refreshingForUpdate = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadActiveController || refreshingForUpdate) return;
+      refreshingForUpdate = true;
+      window.location.reload();
     });
+    const registration = await navigator.serviceWorker.register("./sw.js", {
+      scope: "./",
+      updateViaCache: "none"
+    });
+    await registration.update().catch(() => undefined);
     const installingWorker = registration.installing;
     if (installingWorker && installingWorker.state !== "activated") {
       await new Promise<void>((resolve, reject) => {
