@@ -34,6 +34,12 @@ import {
   StoryParameter,
   StoryProject
 } from "./domain/project";
+import {
+  createStoryLifeProjectFileName,
+  loadStoryLifeProjectFile,
+  parseLegacyProjectText,
+  saveStoryLifeProjectInBrowser
+} from "./utils/projectFiles";
 
 type ResizeTarget = "left" | "logic" | "inspector";
 type SaveState = "saved" | "unsaved" | "autosaved";
@@ -740,10 +746,23 @@ export default function App() {
     const projectJson = serializeProject(project);
 
     if (!window.storyLife) {
-      downloadProjectInBrowser(projectJson);
-      recordManualSave();
-      setSaveState("saved");
-      setStatus("Project downloaded");
+      try {
+        const fileName = createStoryLifeProjectFileName(project.projectName);
+        const result = await saveStoryLifeProjectInBrowser(project, fileName);
+        if (result === "canceled") {
+          setStatus("Project save canceled");
+          return;
+        }
+        recordManualSave();
+        setSaveState("saved");
+        setStatus(
+          result === "shared"
+            ? `Portable project shared: ${fileName}`
+            : `Portable project downloaded: ${fileName}`
+        );
+      } catch (error) {
+        setStatus(getErrorMessage(error));
+      }
       return;
     }
 
@@ -771,7 +790,7 @@ export default function App() {
         return;
       }
 
-      const loadedProject = migrateProject(JSON.parse(result.contents));
+      const loadedProject = migrateProject(parseLegacyProjectText(result.contents));
       setProject(loadedProject);
       clearProjectHistory();
       setSelectedSceneId(loadedProject.startSceneId);
@@ -849,7 +868,7 @@ export default function App() {
     }
 
     try {
-      const loadedProject = migrateProject(JSON.parse(await file.text()));
+      const loadedProject = await loadStoryLifeProjectFile(file);
       setProject(loadedProject);
       clearProjectHistory();
       setSelectedSceneId(loadedProject.startSceneId);
@@ -1111,6 +1130,7 @@ export default function App() {
                 setSelectedSceneId(sceneId);
                 setStatus("Click a target node on the canvas");
               }}
+              onSelectScene={setSelectedSceneId}
               onSceneLayoutClose={() => {
                 setCanvasRefreshSignal((currentSignal) => currentSignal + 1);
                 setCanvasFocusSelectedSignal((currentSignal) => currentSignal + 1);
@@ -1225,16 +1245,6 @@ function ProjectManagerModal({
       </section>
     </div>
   );
-}
-
-function downloadProjectInBrowser(contents: string, fileName = "project.json") {
-  const blob = new Blob([contents], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 function createStandaloneGameHtml(project: StoryProject): string {
