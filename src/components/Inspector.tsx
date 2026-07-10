@@ -2282,17 +2282,6 @@ function ScenePreviewModal({
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <button
-        type="button"
-        className="scene-layout-scene-nav scene-layout-scene-nav-previous"
-        aria-label="Previous scene"
-        title="Previous scene"
-        disabled={!previousScene}
-        onMouseDown={(event) => event.stopPropagation()}
-        onClick={() => previousScene && onSelectScene(previousScene.id)}
-      >
-        <span aria-hidden="true">&lsaquo;</span>
-      </button>
       <section
         className="scene-preview-modal"
         role="dialog"
@@ -2302,10 +2291,35 @@ function ScenePreviewModal({
         onMouseDownCapture={stopEditableEventPropagation}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="modal-heading">
-          <div>
+        <div className="modal-heading scene-layout-modal-heading">
+          <div className="scene-layout-heading-copy">
             <h2>Scene Layout</h2>
             <p>{draftScene.title || draftScene.id}</p>
+          </div>
+          <div className="scene-layout-scene-navigation" role="group" aria-label="Scene navigation">
+            <button
+              type="button"
+              className="scene-layout-scene-nav-button"
+              aria-label="Previous scene"
+              title="Previous scene"
+              disabled={!previousScene}
+              onClick={() => previousScene && onSelectScene(previousScene.id)}
+            >
+              <span aria-hidden="true">&lsaquo;</span>
+            </button>
+            <span className="scene-layout-scene-position" aria-live="polite">
+              {sceneIndex >= 0 ? sceneIndex + 1 : 1} / {scenes.length}
+            </span>
+            <button
+              type="button"
+              className="scene-layout-scene-nav-button"
+              aria-label="Next scene"
+              title="Next scene"
+              disabled={!nextScene}
+              onClick={() => nextScene && onSelectScene(nextScene.id)}
+            >
+              <span aria-hidden="true">&rsaquo;</span>
+            </button>
           </div>
           <div className="modal-heading-actions">
             <button
@@ -2331,17 +2345,6 @@ function ScenePreviewModal({
           fullSize
         />
       </section>
-      <button
-        type="button"
-        className="scene-layout-scene-nav scene-layout-scene-nav-next"
-        aria-label="Next scene"
-        title="Next scene"
-        disabled={!nextScene}
-        onMouseDown={(event) => event.stopPropagation()}
-        onClick={() => nextScene && onSelectScene(nextScene.id)}
-      >
-        <span aria-hidden="true">&rsaquo;</span>
-      </button>
     </div>
   );
 }
