@@ -1,0 +1,43 @@
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 0 !important;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  background: #eee8dc;
+}
+
+.export-player-shell {
+  width: 100vw;
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 0;
+}
+
+.export-phone-scale {
+  width: 390px;
+  min-height: 760px;
+  transform: scale(var(--storylife-export-scale, 1));
+  transform-origin: top center;
+}
+
+.export-phone-scale .scene-live-preview-phone {
+  height: 760px;
+  max-height: none;
+  overflow: visible;
+}
+
+.export-error {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #8f362f;
+}
