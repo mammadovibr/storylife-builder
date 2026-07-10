@@ -57,7 +57,10 @@ async function verifyIpadBuild() {
   const self = {
     location: { origin: new URL(scope).origin },
     registration: { scope },
-    clients: { async claim() {} },
+    clients: {
+      async claim() {},
+      async matchAll() { return []; }
+    },
     async skipWaiting() {},
     addEventListener(type, listener) {
       listeners.set(type, listener);
