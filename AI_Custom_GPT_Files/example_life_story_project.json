@@ -1,0 +1,580 @@
+{
+  "version": 1,
+  "projectName": "Первый день Софии",
+  "startSceneId": "scene_1",
+  "parameters": [
+    {
+      "id": "parameter_confidence",
+      "key": "Уверенность",
+      "initialValue": 20,
+      "minValue": 0,
+      "maxValue": 100
+    },
+    {
+      "id": "parameter_mood",
+      "key": "Настроение",
+      "initialValue": 50,
+      "minValue": 0,
+      "maxValue": 100
+    }
+  ],
+  "flags": [
+    {
+      "id": "flag_helped_mom",
+      "key": "Помогла маме",
+      "defaultValue": false
+    },
+    {
+      "id": "flag_talked_to_dad",
+      "key": "Поговорила с папой",
+      "defaultValue": false
+    }
+  ],
+  "audio": {
+    "backgroundMusicPath": "",
+    "musicVolume": 0.55,
+    "musicFadeInSeconds": 0.8,
+    "musicFadeOutSeconds": 0.8,
+    "fadeMusicOnSceneSound": true,
+    "sceneSoundDuckVolume": 0.18
+  },
+  "theme": {
+    "backgroundColor": "#eee8dc",
+    "textColor": "#26231f"
+  },
+  "mediaLibrary": {
+    "folders": []
+  },
+  "scenes": [
+    {
+      "id": "scene_1",
+      "title": "Утро дома",
+      "text": "София проснулась раньше обычного. На кухне мама собиралась на работу, а папа искал какие-то бумаги. День только начинался, но уже было понятно: сегодня многое может измениться.",
+      "imagePath": "",
+      "soundPath": "",
+      "soundVolume": 1,
+      "soundFadeInSeconds": 0,
+      "soundFadeOutSeconds": 0,
+      "layoutType": "imageBackground",
+      "fadeMusicOnSceneSound": true,
+      "sceneType": "normal",
+      "nodeColor": "blue",
+      "style": {
+        "backgroundColor": "",
+        "textColor": "",
+        "titlePanelColor": "#fff7ed",
+        "titleBorderColor": "#e7c8a0",
+        "titleTextColor": "#3b2f2f",
+        "titlePanelTransparent": false,
+        "titlePanelWidth": 340,
+        "titlePanelHeight": 70,
+        "textPanelColor": "#fff7ed",
+        "textBorderColor": "#e7c8a0",
+        "textPanelTransparent": false,
+        "textPanelWidth": 340,
+        "textPanelHeight": 190,
+        "titleFontSize": 22,
+        "textFontSize": 16,
+        "textFontFamily": "sans",
+        "textAlign": "left",
+        "imageOffsetX": 0,
+        "imageOffsetY": 0,
+        "imageScale": 1,
+        "titleOffsetX": 0,
+        "titleOffsetY": 30,
+        "titleScale": 1,
+        "textOffsetX": 0,
+        "textOffsetY": 220,
+        "textScale": 1,
+        "choicesOffsetX": 0,
+        "choicesOffsetY": 560,
+        "choicesPanelColor": "#ffffff",
+        "choicesBorderColor": "#d8cfc0",
+        "choicesTextColor": "#26231f",
+        "choicesPanelTransparent": false,
+        "choicesFontSize": 15,
+        "choicesPanelWidth": 320,
+        "choicesPanelHeight": 56,
+        "choicesScale": 1
+      },
+      "authorNotes": "Стартовая сцена. Игрок выбирает, с кем София начнет день.",
+      "position": {
+        "x": 120,
+        "y": 120
+      },
+      "choices": [
+        {
+          "id": "choice_1_1",
+          "text": "Помочь маме на кухне",
+          "targetNodeId": "scene_2",
+          "conditionalTargets": [],
+          "effects": [
+            {
+              "id": "effect_1",
+              "type": "flag",
+              "flagId": "flag_helped_mom",
+              "value": true
+            },
+            {
+              "id": "effect_2",
+              "type": "parameter",
+              "parameterId": "parameter_mood",
+              "operation": "add",
+              "value": 10
+            }
+          ],
+          "conditions": [],
+          "conditionFailBehavior": "disabled"
+        },
+        {
+          "id": "choice_1_2",
+          "text": "Спросить папу, что случилось",
+          "targetNodeId": "scene_3",
+          "conditionalTargets": [],
+          "effects": [
+            {
+              "id": "effect_3",
+              "type": "flag",
+              "flagId": "flag_talked_to_dad",
+              "value": true
+            },
+            {
+              "id": "effect_4",
+              "type": "parameter",
+              "parameterId": "parameter_confidence",
+              "operation": "add",
+              "value": 15
+            }
+          ],
+          "conditions": [],
+          "conditionFailBehavior": "disabled"
+        }
+      ]
+    },
+    {
+      "id": "scene_2",
+      "title": "Разговор с мамой",
+      "text": "Мама улыбнулась, когда София помогла ей накрыть на стол. За завтраком она сказала, что сегодня в городе будет прослушивание для молодых артистов.",
+      "imagePath": "",
+      "soundPath": "",
+      "soundVolume": 1,
+      "soundFadeInSeconds": 0,
+      "soundFadeOutSeconds": 0,
+      "layoutType": "dialogueStyle",
+      "fadeMusicOnSceneSound": true,
+      "sceneType": "normal",
+      "nodeColor": "green",
+      "style": {
+        "backgroundColor": "",
+        "textColor": "",
+        "titlePanelColor": "#fff7ed",
+        "titleBorderColor": "#e7c8a0",
+        "titleTextColor": "#3b2f2f",
+        "titlePanelTransparent": false,
+        "titlePanelWidth": 340,
+        "titlePanelHeight": 70,
+        "textPanelColor": "#fff7ed",
+        "textBorderColor": "#e7c8a0",
+        "textPanelTransparent": false,
+        "textPanelWidth": 340,
+        "textPanelHeight": 180,
+        "titleFontSize": 22,
+        "textFontSize": 16,
+        "textFontFamily": "sans",
+        "textAlign": "left",
+        "imageOffsetX": 0,
+        "imageOffsetY": 0,
+        "imageScale": 1,
+        "titleOffsetX": 0,
+        "titleOffsetY": 30,
+        "titleScale": 1,
+        "textOffsetX": 0,
+        "textOffsetY": 420,
+        "textScale": 1,
+        "choicesOffsetX": 0,
+        "choicesOffsetY": 620,
+        "choicesPanelColor": "#ffffff",
+        "choicesBorderColor": "#d8cfc0",
+        "choicesTextColor": "#26231f",
+        "choicesPanelTransparent": false,
+        "choicesFontSize": 15,
+        "choicesPanelWidth": 320,
+        "choicesPanelHeight": 56,
+        "choicesScale": 1
+      },
+      "authorNotes": "",
+      "position": {
+        "x": 430,
+        "y": 60
+      },
+      "choices": [
+        {
+          "id": "choice_2_1",
+          "text": "Решиться пойти на прослушивание",
+          "targetNodeId": "scene_4",
+          "conditionalTargets": [],
+          "effects": [
+            {
+              "id": "effect_5",
+              "type": "parameter",
+              "parameterId": "parameter_confidence",
+              "operation": "add",
+              "value": 20
+            }
+          ],
+          "conditions": [],
+          "conditionFailBehavior": "disabled"
+        }
+      ]
+    },
+    {
+      "id": "scene_3",
+      "title": "Папина тайна",
+      "text": "Папа вздохнул и признался, что потерял важный документ. Он попросил Софию помочь ему поискать. Это могло занять весь день.",
+      "imagePath": "",
+      "soundPath": "",
+      "soundVolume": 1,
+      "soundFadeInSeconds": 0,
+      "soundFadeOutSeconds": 0,
+      "layoutType": "textFirst",
+      "fadeMusicOnSceneSound": true,
+      "sceneType": "normal",
+      "nodeColor": "amber",
+      "style": {
+        "backgroundColor": "",
+        "textColor": "",
+        "titlePanelColor": "#fff7ed",
+        "titleBorderColor": "#e7c8a0",
+        "titleTextColor": "#3b2f2f",
+        "titlePanelTransparent": false,
+        "titlePanelWidth": 340,
+        "titlePanelHeight": 70,
+        "textPanelColor": "#fff7ed",
+        "textBorderColor": "#e7c8a0",
+        "textPanelTransparent": false,
+        "textPanelWidth": 340,
+        "textPanelHeight": 180,
+        "titleFontSize": 22,
+        "textFontSize": 16,
+        "textFontFamily": "sans",
+        "textAlign": "left",
+        "imageOffsetX": 0,
+        "imageOffsetY": 0,
+        "imageScale": 1,
+        "titleOffsetX": 0,
+        "titleOffsetY": 30,
+        "titleScale": 1,
+        "textOffsetX": 0,
+        "textOffsetY": 130,
+        "textScale": 1,
+        "choicesOffsetX": 0,
+        "choicesOffsetY": 540,
+        "choicesPanelColor": "#ffffff",
+        "choicesBorderColor": "#d8cfc0",
+        "choicesTextColor": "#26231f",
+        "choicesPanelTransparent": false,
+        "choicesFontSize": 15,
+        "choicesPanelWidth": 320,
+        "choicesPanelHeight": 56,
+        "choicesScale": 1
+      },
+      "authorNotes": "",
+      "position": {
+        "x": 430,
+        "y": 280
+      },
+      "choices": [
+        {
+          "id": "choice_3_1",
+          "text": "Помочь папе",
+          "targetNodeId": "scene_5",
+          "conditionalTargets": [],
+          "effects": [
+            {
+              "id": "effect_6",
+              "type": "parameter",
+              "parameterId": "parameter_mood",
+              "operation": "subtract",
+              "value": 5
+            }
+          ],
+          "conditions": [],
+          "conditionFailBehavior": "disabled"
+        },
+        {
+          "id": "choice_3_2",
+          "text": "Сказать, что у тебя свои планы",
+          "targetNodeId": "scene_4",
+          "conditionalTargets": [],
+          "effects": [
+            {
+              "id": "effect_7",
+              "type": "parameter",
+              "parameterId": "parameter_confidence",
+              "operation": "add",
+              "value": 10
+            }
+          ],
+          "conditions": [],
+          "conditionFailBehavior": "disabled"
+        }
+      ]
+    },
+    {
+      "id": "scene_4",
+      "title": "Прослушивание",
+      "text": "София стоит перед дверью зала. Сердце стучит быстро, но она понимает: если сейчас уйдет, потом будет жалеть.",
+      "imagePath": "",
+      "soundPath": "",
+      "soundVolume": 1,
+      "soundFadeInSeconds": 0,
+      "soundFadeOutSeconds": 0,
+      "layoutType": "fullImageMoment",
+      "fadeMusicOnSceneSound": true,
+      "sceneType": "important",
+      "nodeColor": "purple",
+      "style": {
+        "backgroundColor": "",
+        "textColor": "",
+        "titlePanelColor": "#fff7ed",
+        "titleBorderColor": "#e7c8a0",
+        "titleTextColor": "#3b2f2f",
+        "titlePanelTransparent": false,
+        "titlePanelWidth": 340,
+        "titlePanelHeight": 70,
+        "textPanelColor": "#fff7ed",
+        "textBorderColor": "#e7c8a0",
+        "textPanelTransparent": false,
+        "textPanelWidth": 340,
+        "textPanelHeight": 170,
+        "titleFontSize": 22,
+        "textFontSize": 16,
+        "textFontFamily": "sans",
+        "textAlign": "left",
+        "imageOffsetX": 0,
+        "imageOffsetY": 0,
+        "imageScale": 1,
+        "titleOffsetX": 0,
+        "titleOffsetY": 30,
+        "titleScale": 1,
+        "textOffsetX": 0,
+        "textOffsetY": 460,
+        "textScale": 1,
+        "choicesOffsetX": 0,
+        "choicesOffsetY": 630,
+        "choicesPanelColor": "#ffffff",
+        "choicesBorderColor": "#d8cfc0",
+        "choicesTextColor": "#26231f",
+        "choicesPanelTransparent": false,
+        "choicesFontSize": 15,
+        "choicesPanelWidth": 320,
+        "choicesPanelHeight": 56,
+        "choicesScale": 1
+      },
+      "authorNotes": "",
+      "position": {
+        "x": 750,
+        "y": 140
+      },
+      "choices": [
+        {
+          "id": "choice_4_1",
+          "text": "Войти и выступить",
+          "targetNodeId": "scene_6",
+          "conditionalTargets": [
+            {
+              "id": "conditional_target_1",
+              "conditions": [
+                {
+                  "id": "condition_1",
+                  "type": "parameter",
+                  "parameterId": "parameter_confidence",
+                  "operator": ">=",
+                  "value": 45
+                }
+              ],
+              "targetSceneId": "scene_7"
+            }
+          ],
+          "effects": [],
+          "conditions": [],
+          "conditionFailBehavior": "disabled"
+        }
+      ]
+    },
+    {
+      "id": "scene_5",
+      "title": "Семья важнее",
+      "text": "София помогла папе найти документы. Прослушивание она пропустила, но вечером поняла: иногда важные решения не выглядят как победа сразу.",
+      "imagePath": "",
+      "soundPath": "",
+      "soundVolume": 1,
+      "soundFadeInSeconds": 0,
+      "soundFadeOutSeconds": 0,
+      "layoutType": "noImage",
+      "fadeMusicOnSceneSound": true,
+      "sceneType": "ending",
+      "nodeColor": "green",
+      "style": {
+        "backgroundColor": "",
+        "textColor": "",
+        "titlePanelColor": "#fff7ed",
+        "titleBorderColor": "#e7c8a0",
+        "titleTextColor": "#3b2f2f",
+        "titlePanelTransparent": false,
+        "titlePanelWidth": 340,
+        "titlePanelHeight": 70,
+        "textPanelColor": "#fff7ed",
+        "textBorderColor": "#e7c8a0",
+        "textPanelTransparent": false,
+        "textPanelWidth": 340,
+        "textPanelHeight": 190,
+        "titleFontSize": 22,
+        "textFontSize": 16,
+        "textFontFamily": "sans",
+        "textAlign": "left",
+        "imageOffsetX": 0,
+        "imageOffsetY": 0,
+        "imageScale": 1,
+        "titleOffsetX": 0,
+        "titleOffsetY": 120,
+        "titleScale": 1,
+        "textOffsetX": 0,
+        "textOffsetY": 230,
+        "textScale": 1,
+        "choicesOffsetX": 0,
+        "choicesOffsetY": 590,
+        "choicesPanelColor": "#ffffff",
+        "choicesBorderColor": "#d8cfc0",
+        "choicesTextColor": "#26231f",
+        "choicesPanelTransparent": false,
+        "choicesFontSize": 15,
+        "choicesPanelWidth": 320,
+        "choicesPanelHeight": 56,
+        "choicesScale": 1
+      },
+      "authorNotes": "Тихая семейная концовка.",
+      "position": {
+        "x": 1060,
+        "y": 300
+      },
+      "choices": []
+    },
+    {
+      "id": "scene_6",
+      "title": "Слишком страшно",
+      "text": "София вошла в зал, но голос дрогнул. Она не прошла отбор. Зато теперь она точно знает, что хочет попробовать снова.",
+      "imagePath": "",
+      "soundPath": "",
+      "soundVolume": 1,
+      "soundFadeInSeconds": 0,
+      "soundFadeOutSeconds": 0,
+      "layoutType": "noImage",
+      "fadeMusicOnSceneSound": true,
+      "sceneType": "ending",
+      "nodeColor": "amber",
+      "style": {
+        "backgroundColor": "",
+        "textColor": "",
+        "titlePanelColor": "#fff7ed",
+        "titleBorderColor": "#e7c8a0",
+        "titleTextColor": "#3b2f2f",
+        "titlePanelTransparent": false,
+        "titlePanelWidth": 340,
+        "titlePanelHeight": 70,
+        "textPanelColor": "#fff7ed",
+        "textBorderColor": "#e7c8a0",
+        "textPanelTransparent": false,
+        "textPanelWidth": 340,
+        "textPanelHeight": 190,
+        "titleFontSize": 22,
+        "textFontSize": 16,
+        "textFontFamily": "sans",
+        "textAlign": "left",
+        "imageOffsetX": 0,
+        "imageOffsetY": 0,
+        "imageScale": 1,
+        "titleOffsetX": 0,
+        "titleOffsetY": 120,
+        "titleScale": 1,
+        "textOffsetX": 0,
+        "textOffsetY": 230,
+        "textScale": 1,
+        "choicesOffsetX": 0,
+        "choicesOffsetY": 590,
+        "choicesPanelColor": "#ffffff",
+        "choicesBorderColor": "#d8cfc0",
+        "choicesTextColor": "#26231f",
+        "choicesPanelTransparent": false,
+        "choicesFontSize": 15,
+        "choicesPanelWidth": 320,
+        "choicesPanelHeight": 56,
+        "choicesScale": 1
+      },
+      "authorNotes": "Концовка, если уверенности мало.",
+      "position": {
+        "x": 1060,
+        "y": 80
+      },
+      "choices": []
+    },
+    {
+      "id": "scene_7",
+      "title": "Первый шаг",
+      "text": "София спела до конца. Её голос дрожал, но в зале стало тихо. После выступления ей сказали: 'Приходи завтра. Мы хотим услышать тебя снова.'",
+      "imagePath": "",
+      "soundPath": "",
+      "soundVolume": 1,
+      "soundFadeInSeconds": 0,
+      "soundFadeOutSeconds": 0,
+      "layoutType": "imageTop",
+      "fadeMusicOnSceneSound": true,
+      "sceneType": "ending",
+      "nodeColor": "red",
+      "style": {
+        "backgroundColor": "",
+        "textColor": "",
+        "titlePanelColor": "#fff7ed",
+        "titleBorderColor": "#e7c8a0",
+        "titleTextColor": "#3b2f2f",
+        "titlePanelTransparent": false,
+        "titlePanelWidth": 340,
+        "titlePanelHeight": 70,
+        "textPanelColor": "#fff7ed",
+        "textBorderColor": "#e7c8a0",
+        "textPanelTransparent": false,
+        "textPanelWidth": 340,
+        "textPanelHeight": 190,
+        "titleFontSize": 22,
+        "textFontSize": 16,
+        "textFontFamily": "sans",
+        "textAlign": "center",
+        "imageOffsetX": 0,
+        "imageOffsetY": 0,
+        "imageScale": 1,
+        "titleOffsetX": 0,
+        "titleOffsetY": 30,
+        "titleScale": 1,
+        "textOffsetX": 0,
+        "textOffsetY": 150,
+        "textScale": 1,
+        "choicesOffsetX": 0,
+        "choicesOffsetY": 590,
+        "choicesPanelColor": "#ffffff",
+        "choicesBorderColor": "#d8cfc0",
+        "choicesTextColor": "#26231f",
+        "choicesPanelTransparent": false,
+        "choicesFontSize": 15,
+        "choicesPanelWidth": 320,
+        "choicesPanelHeight": 56,
+        "choicesScale": 1
+      },
+      "authorNotes": "Лучшая концовка.",
+      "position": {
+        "x": 1060,
+        "y": 170
+      },
+      "choices": []
+    }
+  ]
+}
