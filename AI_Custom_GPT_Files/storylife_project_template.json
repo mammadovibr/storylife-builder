@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "projectName": "Untitled StoryLife Project",
+  "startSceneId": "scene_1",
+  "parameters": [],
+  "flags": [],
+  "audio": {
+    "backgroundMusicPath": "",
+    "musicVolume": 0.55,
+    "musicFadeInSeconds": 0.8,
+    "musicFadeOutSeconds": 0.8,
+    "fadeMusicOnSceneSound": true,
+    "sceneSoundDuckVolume": 0.18
+  },
+  "theme": {
+    "backgroundColor": "#eee8dc",
+    "textColor": "#26231f"
+  },
+  "mediaLibrary": {
+    "folders": []
+  },
+  "scenes": [
+    {
+      "id": "scene_1",
+      "title": "Start",
+      "text": "Start scene text.",
+      "imagePath": "",
+      "soundPath": "",
+      "soundVolume": 1,
+      "soundFadeInSeconds": 0,
+      "soundFadeOutSeconds": 0,
+      "layoutType": "imageBackground",
+      "fadeMusicOnSceneSound": true,
+      "sceneType": "normal",
+      "nodeColor": "blue",
+      "style": {
+        "backgroundColor": "",
+        "textColor": "",
+        "titlePanelColor": "#fff7ed",
+        "titleBorderColor": "#e7c8a0",
+        "titleTextColor": "#3b2f2f",
+        "titlePanelTransparent": false,
+        "titlePanelWidth": 340,
+        "titlePanelHeight": 70,
+        "textPanelColor": "#fff7ed",
+        "textBorderColor": "#e7c8a0",
+        "textPanelTransparent": false,
+        "textPanelWidth": 340,
+        "textPanelHeight": 180,
+        "titleFontSize": 22,
+        "textFontSize": 16,
+        "textFontFamily": "sans",
+        "textAlign": "left",
+        "imageOffsetX": 0,
+        "imageOffsetY": 0,
+        "imageScale": 1,
+        "titleOffsetX": 0,
+        "titleOffsetY": 30,
+        "titleScale": 1,
+        "textOffsetX": 0,
+        "textOffsetY": 130,
+        "textScale": 1,
+        "choicesOffsetX": 0,
+        "choicesOffsetY": 540,
+        "choicesPanelColor": "#ffffff",
+        "choicesBorderColor": "#d8cfc0",
+        "choicesTextColor": "#26231f",
+        "choicesPanelTransparent": false,
+        "choicesFontSize": 15,
+        "choicesPanelWidth": 320,
+        "choicesPanelHeight": 56,
+        "choicesScale": 1
+      },
+      "authorNotes": "",
+      "position": {
+        "x": 120,
+        "y": 120
+      },
+      "choices": []
+    }
+  ]
+}
