@@ -1,7 +1,7 @@
-const CACHE_NAME = "storylife-offline-github-20260710-1456";
+const CACHE_NAME = "storylife-offline-github-20260710-1544";
 const PRECACHE_URLS = [
   "./",
-  "./assets/main-tOVCxvsh.js",
+  "./assets/main-BVglnSRZ.js",
   "./assets/main-35xLkc90.css",
   "./icons/storylife.svg",
   "./index.html",
@@ -24,6 +24,10 @@ self.addEventListener("activate", (event) => {
           .map((key) => caches.delete(key))
       ))
       .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: "window", includeUncontrolled: true }))
+      .then((windowClients) => Promise.all(
+        windowClients.map((client) => client.navigate(client.url))
+      ))
   );
 });
 
