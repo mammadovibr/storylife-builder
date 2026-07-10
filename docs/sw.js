@@ -1,8 +1,8 @@
-const CACHE_NAME = "storylife-offline-github-20260710-1615";
+const CACHE_NAME = "storylife-offline-github-20260710-arrows-1";
 const PRECACHE_URLS = [
   "./",
-  "./assets/main-BVglnSRZ.js",
-  "./assets/main-35xLkc90.css",
+  "./assets/main-CDXsw4IU.js",
+  "./assets/main-DsvBYleI.css",
   "./icons/storylife.svg",
   "./index.html",
   "./manifest.webmanifest"
