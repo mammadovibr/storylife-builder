@@ -1,4 +1,4 @@
-const CACHE_NAME = "storylife-offline-github-20260710-1544";
+const CACHE_NAME = "storylife-offline-github-20260710-1615";
 const PRECACHE_URLS = [
   "./",
   "./assets/main-BVglnSRZ.js",
@@ -24,10 +24,6 @@ self.addEventListener("activate", (event) => {
           .map((key) => caches.delete(key))
       ))
       .then(() => self.clients.claim())
-      .then(() => self.clients.matchAll({ type: "window", includeUncontrolled: true }))
-      .then((windowClients) => Promise.all(
-        windowClients.map((client) => client.navigate(client.url))
-      ))
   );
 });
 
