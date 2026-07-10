@@ -1,16 +1,9 @@
-const CACHE_NAME = "storylife-offline-f83f412ad89f94f9";
+const CACHE_NAME = "storylife-offline-github-20260710-1456";
 const PRECACHE_URLS = [
   "./",
-  "./assets/canvas-decor-balloon.png",
-  "./assets/canvas-decor-foliage.png",
-  "./assets/canvas-decor-mountains-film.png",
-  "./assets/canvas-story-decor-source.png",
-  "./assets/canvas-story-decor.png",
-  "./assets/main-CgubaCC8.js",
-  "./assets/main-Dh-E4hEq.css",
-  "./icons/storylife-180.png",
-  "./icons/storylife-192.png",
-  "./icons/storylife-512.png",
+  "./assets/main-tOVCxvsh.js",
+  "./assets/main-35xLkc90.css",
+  "./icons/storylife.svg",
   "./index.html",
   "./manifest.webmanifest"
 ];
