@@ -4,6 +4,11 @@ import { access, copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/p
 import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import isDev from "electron-is-dev";
+import {
+  createStoryLifeArchive,
+  isStoryLifeArchive,
+  readStoryLifeArchive
+} from "./projectArchive.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const { app, BrowserWindow, dialog, ipcMain } = electron;
@@ -166,15 +171,15 @@ app.on("window-all-closed", () => {
 ipcMain.handle("project:save", async (_event, projectJson: string) => {
   const result = await dialog.showSaveDialog({
     title: "Save StoryLife Project",
-    defaultPath: "project.json",
-    filters: [{ name: "StoryLife Project", extensions: ["json"] }]
+    defaultPath: "StoryLife Project.storylife",
+    filters: [{ name: "Portable StoryLife Project", extensions: ["storylife"] }]
   });
 
   if (result.canceled || !result.filePath) {
     return { canceled: true as const };
   }
 
-  await writeFile(result.filePath, projectJson, "utf-8");
+  await writeFile(result.filePath, await createStoryLifeArchive(projectJson));
   return { canceled: false as const, filePath: result.filePath };
 });
 
@@ -182,7 +187,10 @@ ipcMain.handle("project:load", async () => {
   const result = await dialog.showOpenDialog({
     title: "Load StoryLife Project",
     properties: ["openFile"],
-    filters: [{ name: "StoryLife Project", extensions: ["json"] }]
+    filters: [
+      { name: "StoryLife Project", extensions: ["storylife", "zip", "json", "txt"] },
+      { name: "All Files", extensions: ["*"] }
+    ]
   });
 
   if (result.canceled || result.filePaths.length === 0) {
@@ -190,7 +198,10 @@ ipcMain.handle("project:load", async () => {
   }
 
   const filePath = result.filePaths[0];
-  const contents = await readFile(filePath, "utf-8");
+  const fileBuffer = await readFile(filePath);
+  const contents = isStoryLifeArchive(fileBuffer)
+    ? await readStoryLifeArchive(fileBuffer)
+    : fileBuffer.toString("utf-8");
   return { canceled: false as const, filePath, contents };
 });
 
@@ -2822,6 +2833,9 @@ function createLeanStoryPlannerSystemPrompt(): string {
     "Return exactly the requested number of scenes. Give every scene a unique lowercase semantic key that describes its event. Never write scene_1, scene_2, or any technical scene number; the application assigns those later.",
     "Plan the entire requested story now, including its beginning, escalation, payoffs, multiple developed branches, and distinct ending scenes.",
     "Every normal scene needs at least one choice. Every ending scene uses sceneType ending and choices:[].",
+    "Use one-choice normal scenes only for a necessary consequence, transition, or payoff. Across the full story, repeatedly create real decision scenes with two or more meaningful actions.",
+    "For a story of 8 or more scenes, create at least two main endings and at least two real branching decisions; larger stories need roughly one real branching decision per 8 scenes.",
+    "Shape the story as deliberate funnels: choices split into developed consequence routes, compatible routes may converge later, and the accumulated decisions must feed several main endings. Do not create one disguised linear path.",
     "Every scene must be reachable from scene_1, and every reachable normal scene must have at least one route to an ending.",
     "Every targetKey must refer to a later scene in the scenes array. Do not use backward links or cycles to fill the requested scene count.",
     "Major branches must keep their own characters, causes, consequences, and fitting endings. Never merge incompatible antagonists or punishments into one generic scene.",
@@ -2837,10 +2851,14 @@ function createLeanStoryArchitectureSystemPrompt(): string {
   return [
     "You are the lead story architect for a large interactive text quest.",
     "Return only one raw JSON object. Plan compact scene contracts, not finished scene prose and not technical project JSON.",
-    "Shape: {\"title\":\"\",\"premise\":\"\",\"tone\":\"\",\"centralConflict\":\"\",\"characters\":[{\"key\":\"\",\"role\":\"\",\"knowledge\":\"\"}],\"majorBranches\":[{\"id\":\"\",\"entryChoice\":\"\",\"identity\":\"\",\"allowedCharacters\":[],\"locations\":[],\"escalation\":\"\",\"resolution\":\"\"}],\"scenePlan\":[{\"key\":\"walk_atm_grandpa\",\"branchId\":\"walk_grandpa\",\"purpose\":\"\",\"allowedCharacters\":[],\"location\":\"\"}],\"sharedPayoffs\":[],\"continuityRules\":[],\"thingsToAvoid\":[]}.",
+    "Shape: {\"title\":\"\",\"premise\":\"\",\"tone\":\"\",\"centralConflict\":\"\",\"characters\":[{\"key\":\"\",\"role\":\"\",\"knowledge\":\"\"}],\"majorBranches\":[{\"id\":\"\",\"entryChoice\":\"\",\"identity\":\"\",\"allowedCharacters\":[],\"locations\":[],\"escalation\":\"\",\"resolution\":\"\"}],\"scenePlan\":[{\"key\":\"walk_atm_grandpa\",\"branchId\":\"walk_grandpa\",\"purpose\":\"\",\"allowedCharacters\":[],\"location\":\"\",\"sceneType\":\"normal\",\"outgoingTargets\":[\"walk_insult_grandpa\",\"walk_leave_grandpa\"]}],\"sharedPayoffs\":[],\"continuityRules\":[],\"thingsToAvoid\":[]}.",
     "Follow the user's exact premise, characters, tone, required endings, and previous discussion.",
     "Design genuinely different major branches with their own characters, causes, escalation, consequences, and fitting resolutions.",
     "A branch may converge only when the incoming situations are compatible and the earlier consequences have already been shown.",
+    "The scenePlan is the binding story graph. Every normal contract must list at least one later semantic key in outgoingTargets; every ending contract must use sceneType ending and outgoingTargets:[] .",
+    "A normal scene must always give the player an action. Use one outgoing target only for a necessary consequence/transition; include repeated real splits with two or more different targets throughout the story.",
+    "For 8 or more scenes, plan at least two main endings and at least two real branching decisions; for a large story plan roughly one real branching decision per 8 scenes.",
+    "Build several coherent funnels: routes split, remain distinct long enough to show their consequences, then compatible routes may converge toward several main endings. Never make every route collapse into one unavoidable ending.",
     "scenePlan must contain exactly the requested number of contracts in reading order. Each key must be unique lowercase English letters/numbers/underscores and describe story meaning, for example bus_grandma_refuses_seat. Never use scene numbers.",
     "Every planned contract must belong to a named branch. Use branchId shared only for a genuinely compatible opening or convergence; incompatible branch characters must never leak across branches.",
     "Allocate enough narrative room for setup, visible consequences after choices, development, escalation, payoff, and multiple endings without filler loops.",
@@ -2854,6 +2872,7 @@ function createLeanStoryBlueprintChunkSystemPrompt(): string {
     "You are the story writer. Append one small prose block to an already planned interactive text quest.",
     "Return only raw JSON: {\"scenes\":[{\"key\":\"walk_atm_grandpa\",\"branchId\":\"walk_grandpa\",\"characters\":[\"erik\",\"grandpa\"],\"location\":\"ATM\",\"title\":\"\",\"purpose\":\"\",\"arrivalReason\":\"\",\"beat\":\"\",\"text\":\"finished scene prose shown to the player\",\"sceneType\":\"normal\",\"choices\":[{\"text\":\"short player action\",\"targetKey\":\"walk_insult_grandpa\",\"immediateConsequence\":\"exact immediate result\"}]}]}.",
     "Return exactly the required semantic keys in the supplied order. Do not repeat or modify approved earlier scenes and never invent technical scene numbers.",
+    "For each required key, copy branchId and sceneType from its master scenePlan contract and create exactly one choice for each outgoingTargets entry. Never add, remove, or redirect a planned target.",
     "Every targetKey must be one of the semantic keys in the master architecture and must occur later in its scenePlan.",
     "Never point backward, create a cycle, use a self-loop, or send a choice back to an earlier conflict.",
     "Every scene in this block must be reachable from the opening semantic key through approved earlier choices or choices in this block. Do not create detached scenes.",
@@ -2878,6 +2897,7 @@ function createSemanticStoryChunkReviewerSystemPrompt(): string {
     "Fail a button if it contains narration rather than a concise player action, or if the target scene does not visibly begin with the result of that exact action.",
     "Fail branch contamination: characters, relatives, locations, knowledge, punishments, or unresolved events from another branch may not appear unless the architecture explicitly uses a shared convergence scene.",
     "Fail filler choices, duplicate consequences, abrupt jumps, unexplained arrivals, generic punishment scenes, and characters who appear without setup.",
+    "Fail a supposedly interactive block if normal scenes omit player actions, if planned branches are silently removed, or if different routes are collapsed before their distinct consequences are shown.",
     "Check branchId, characters, location, arrivalReason, scene text, and choices against the master architecture and approved scenes.",
     "Pass only when a human reader can follow why every new scene happened and which earlier player choice caused it.",
     "Name semantic scene keys and exact choice text in concise problems. rewriteInstruction must tell the writer how to repair only this block."
@@ -2930,6 +2950,7 @@ function createLeanStoryBlueprintReviewerSystemPrompt(): string {
     "Fail repetitive filler loops, repeated versions of the same choice, branches that differ only in wording, and choices that change only route length.",
     "Fail characters who appear or know facts without setup, events not caused by previous choices, and random locations or punishments.",
     "Fail merged scenes that generically combine incompatible incoming routes, antagonists, locations, or consequences.",
+    "Fail a large blueprint that behaves like one linear chain: it needs repeated real branching decisions, later compatible convergence, and several main endings caused by the accumulated routes.",
     "Each major branch must preserve its identity and receive developed consequences and a fitting resolution. Do not collapse distinct branches into one generic ending unless the original request explicitly requires one and the convergence is fully justified.",
     "Check every scene purpose, arrivalReason, beat, finished text, choice text, immediateConsequence, and target scene together.",
     "Pass only if an ordinary human reader would recognize one coherent authored interactive story rather than a graph assembled to satisfy scene count.",
