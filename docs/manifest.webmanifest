@@ -1,0 +1,19 @@
+{
+  "name": "StoryLife Builder",
+  "short_name": "StoryLife",
+  "description": "Offline interactive story builder",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4eee4",
+  "theme_color": "#f4eee4",
+  "icons": [
+    {
+      "src": "./icons/storylife.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
