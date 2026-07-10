@@ -1,0 +1,177 @@
+{
+  "version": 1,
+  "projectName": "StoryLife Example",
+  "startSceneId": "scene_start",
+  "parameters": [
+    {
+      "id": "parameter_money",
+      "key": "money",
+      "initialValue": 50,
+      "minValue": 0,
+      "maxValue": null
+    }
+  ],
+  "flags": [
+    {
+      "id": "flag_helped_friend",
+      "key": "helped_friend",
+      "defaultValue": false
+    }
+  ],
+  "audio": {
+    "backgroundMusicPath": "",
+    "musicVolume": 0.55,
+    "musicFadeInSeconds": 0.8,
+    "musicFadeOutSeconds": 0.8,
+    "fadeMusicOnSceneSound": true,
+    "sceneSoundDuckVolume": 0.18
+  },
+  "theme": {
+    "backgroundColor": "#eee8dc",
+    "textColor": "#26231f"
+  },
+  "mediaLibrary": {
+    "folders": []
+  },
+  "scenes": [
+    {
+      "id": "scene_start",
+      "title": "Morning",
+      "text": "You wake up and see two paths outside the window.",
+      "imagePath": "",
+      "soundPath": "",
+      "soundVolume": 1,
+      "soundFadeInSeconds": 0,
+      "soundFadeOutSeconds": 0,
+      "layoutType": "imageTop",
+      "fadeMusicOnSceneSound": true,
+      "sceneType": "normal",
+      "nodeColor": "blue",
+      "style": {
+        "backgroundColor": "",
+        "textColor": "",
+        "textPanelColor": "",
+        "textBorderColor": "",
+        "imageOffsetX": 0,
+        "imageOffsetY": 0,
+        "imageScale": 1,
+        "textOffsetX": 0,
+        "textOffsetY": 0,
+        "textScale": 1,
+        "choicesOffsetX": 0,
+        "choicesOffsetY": 0,
+        "choicesScale": 1
+      },
+      "authorNotes": "",
+      "position": {
+        "x": 120,
+        "y": 120
+      },
+      "choices": [
+        {
+          "id": "choice_forest",
+          "text": "Go to the forest",
+          "targetNodeId": "scene_forest",
+          "effects": [
+            {
+              "id": "effect_helped_friend",
+              "type": "flag",
+              "flagId": "flag_helped_friend",
+              "value": true
+            }
+          ],
+          "conditionalTargets": [],
+          "conditions": [],
+          "conditionFailBehavior": "disabled"
+        },
+        {
+          "id": "choice_city",
+          "text": "Walk to the city",
+          "targetNodeId": "scene_city",
+          "effects": [
+            {
+              "id": "effect_money",
+              "type": "parameter",
+              "parameterId": "parameter_money",
+              "operation": "add",
+              "value": 100
+            }
+          ],
+          "conditionalTargets": [],
+          "conditions": [],
+          "conditionFailBehavior": "disabled"
+        }
+      ]
+    },
+    {
+      "id": "scene_forest",
+      "title": "Forest",
+      "text": "The forest is quiet.",
+      "imagePath": "",
+      "soundPath": "",
+      "soundVolume": 1,
+      "soundFadeInSeconds": 0,
+      "soundFadeOutSeconds": 0,
+      "layoutType": "imageBackground",
+      "fadeMusicOnSceneSound": true,
+      "sceneType": "normal",
+      "nodeColor": "green",
+      "style": {
+        "backgroundColor": "",
+        "textColor": "",
+        "textPanelColor": "",
+        "textBorderColor": "",
+        "imageOffsetX": 0,
+        "imageOffsetY": 0,
+        "imageScale": 1,
+        "textOffsetX": 0,
+        "textOffsetY": 0,
+        "textScale": 1,
+        "choicesOffsetX": 0,
+        "choicesOffsetY": 0,
+        "choicesScale": 1
+      },
+      "authorNotes": "",
+      "position": {
+        "x": 430,
+        "y": 70
+      },
+      "choices": []
+    },
+    {
+      "id": "scene_city",
+      "title": "City",
+      "text": "The city gates are open.",
+      "imagePath": "",
+      "soundPath": "",
+      "soundVolume": 1,
+      "soundFadeInSeconds": 0,
+      "soundFadeOutSeconds": 0,
+      "layoutType": "textFirst",
+      "fadeMusicOnSceneSound": true,
+      "sceneType": "normal",
+      "nodeColor": "amber",
+      "style": {
+        "backgroundColor": "",
+        "textColor": "",
+        "textPanelColor": "",
+        "textBorderColor": "",
+        "imageOffsetX": 0,
+        "imageOffsetY": 0,
+        "imageScale": 1,
+        "textOffsetX": 0,
+        "textOffsetY": 0,
+        "textScale": 1,
+        "choicesOffsetX": 0,
+        "choicesOffsetY": 0,
+        "choicesScale": 1
+      },
+      "authorNotes": "",
+      "position": {
+        "x": 430,
+        "y": 260
+      },
+      "choices": []
+    }
+  ]
+}
