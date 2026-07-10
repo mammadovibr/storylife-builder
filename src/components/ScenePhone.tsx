@@ -1,0 +1,393 @@
+import { useEffect, useState, type CSSProperties } from "react";
+import type { Choice, RuntimeState, Scene, StoryProject } from "../domain/project";
+
+interface VisibleChoice {
+  choice: Choice;
+  isAvailable: boolean;
+}
+
+interface ScenePhoneProps {
+  project: StoryProject;
+  scene: Scene;
+  visibleChoices: VisibleChoice[];
+  onChoice: (choice: Choice) => void;
+}
+
+export function ScenePhone({
+  project,
+  scene,
+  visibleChoices,
+  onChoice
+}: ScenePhoneProps) {
+  const imageSrc = useResolvedImageSrc(scene.imagePath);
+  const effectiveLayout =
+    scene.layoutType === "noImage" || scene.imagePath.trim() === ""
+      ? "noImage"
+      : scene.layoutType;
+  const choicesAreTransparent =
+    scene.style.choicesPanelTransparent || scene.style.choicesPanelOpacity <= 0;
+
+  return (
+    <article
+      className={`play-card-exact scene-live-preview-phone scene-preview-layout-${effectiveLayout}`}
+      key={scene.id}
+      style={getExactPhoneStyle(scene, effectiveLayout, project, imageSrc)}
+    >
+      <ExactSceneImage scene={scene} imageSrc={imageSrc} />
+      <ExactSceneTitle scene={scene} project={project} />
+      <ExactSceneText scene={scene} project={project} />
+      <div
+        className={`scene-mini-choice exact-play-choices ${
+          scene.style.choicesPanelHeight > 0 ? "has-fixed-height" : ""
+        }`}
+        style={getExactChoicesStyle(scene)}
+      >
+        <div className="scene-preview-choice-list">
+          {visibleChoices.map(({ choice, isAvailable }) => (
+            <button
+              type="button"
+              key={choice.id}
+              disabled={!isAvailable}
+              className={`choice-preview-input exact-play-choice-button ${
+                !isAvailable ? "locked-choice" : ""
+              } ${choicesAreTransparent ? "transparent-choice-button" : ""}`}
+              style={getExactChoiceButtonStyle(scene)}
+              onClick={() => {
+                playChoiceClickSound();
+                onChoice(choice);
+              }}
+            >
+              {!isAvailable ? "Locked: " : ""}
+              {choice.text || "Continue"}
+            </button>
+          ))}
+          {visibleChoices.length === 0 && (
+            <span className="empty-state">No choices from this scene.</span>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ExactSceneImage({ scene, imageSrc }: { scene: Scene; imageSrc: string }) {
+  if (scene.imagePath.trim() === "" || imageSrc.trim() === "" || scene.layoutType === "noImage") {
+    return null;
+  }
+
+  return (
+    <div
+      className="scene-preview-editable scene-preview-image-editable"
+      style={getExactImageFrameStyle(scene)}
+    >
+      <img
+        className="scene-preview-image"
+        style={getExactImageStyle(scene)}
+        src={imageSrc}
+        alt=""
+        onError={(event) => {
+          event.currentTarget.style.visibility = "hidden";
+        }}
+        onLoad={(event) => {
+          event.currentTarget.style.visibility = "visible";
+        }}
+      />
+    </div>
+  );
+}
+
+function ExactSceneText({
+  scene,
+  project
+}: {
+  scene: Scene;
+  project: StoryProject;
+}) {
+  return (
+    <section className="scene-preview-text-panel" style={getExactTextStyle(scene, project)}>
+      <p>{scene.text || "This scene has no text yet."}</p>
+    </section>
+  );
+}
+
+function ExactSceneTitle({
+  scene,
+  project
+}: {
+  scene: Scene;
+  project: StoryProject;
+}) {
+  return (
+    <section className="scene-preview-title-panel" style={getExactTitleStyle(scene, project)}>
+      <h1 style={{ fontSize: `${scene.style.titleFontSize}px` }}>
+        {scene.title || "Untitled scene"}
+      </h1>
+    </section>
+  );
+}
+
+function getExactPhoneStyle(
+  scene: Scene,
+  effectiveLayout: string,
+  project: StoryProject,
+  imageSrc: string
+): CSSProperties {
+  void effectiveLayout;
+  void imageSrc;
+
+  return {
+    background: scene.style.backgroundColor || project.theme.backgroundColor,
+    color: scene.style.textColor || project.theme.textColor
+  };
+}
+
+function getExactTextStyle(scene: Scene, project: StoryProject): CSSProperties {
+  return {
+    ...getExactTransformStyle(scene, "text"),
+    ...getPanelVisualStyle({
+      transparent: scene.style.textPanelTransparent || scene.style.textPanelOpacity <= 0,
+      color: scene.style.textPanelColor || "#fffdfa",
+      borderColor: scene.style.textBorderColor || "#a48d69",
+      opacity: scene.style.textPanelOpacity
+    }),
+    color: scene.style.textColor || project.theme.textColor,
+    fontFamily: getSceneFontFamily(scene.style.textFontFamily),
+    fontSize: `${scene.style.textFontSize}px`,
+    width: scene.style.textPanelWidth > 0 ? `${scene.style.textPanelWidth}px` : undefined,
+    height:
+      scene.style.textPanelHeight > 0 ? `${scene.style.textPanelHeight}px` : undefined,
+    textAlign: scene.style.textAlign,
+    padding: `${scene.style.textPaddingTop}px ${scene.style.textPaddingSide}px`
+  };
+}
+
+function getExactTitleStyle(scene: Scene, project: StoryProject): CSSProperties {
+  return {
+    ...getExactTransformStyle(scene, "title"),
+    ...getPanelVisualStyle({
+      transparent: scene.style.titlePanelTransparent || scene.style.titlePanelOpacity <= 0,
+      color: scene.style.titlePanelColor || "#fffdfa",
+      borderColor: scene.style.titleBorderColor || "#a48d69",
+      opacity: scene.style.titlePanelOpacity
+    }),
+    color: scene.style.titleTextColor || scene.style.textColor || project.theme.textColor,
+    fontFamily: getSceneFontFamily(scene.style.textFontFamily),
+    width:
+      scene.style.titlePanelWidth > 0 ? `${scene.style.titlePanelWidth}px` : undefined,
+    height:
+      scene.style.titlePanelHeight > 0
+        ? `${scene.style.titlePanelHeight}px`
+        : undefined,
+    textAlign: scene.style.textAlign,
+    padding: `${scene.style.titlePaddingTop}px ${scene.style.titlePaddingSide}px`
+  };
+}
+
+function getExactImageFrameStyle(scene: Scene): CSSProperties {
+  return {
+    transform: `translate(${scene.style.imageOffsetX / 3}px, ${
+      scene.style.imageOffsetY / 3
+    }px) scale(${scene.style.imageScale})`
+  };
+}
+
+function getExactImageStyle(scene: Scene): CSSProperties {
+  return {
+    clipPath: `inset(${scene.style.imageCropTop}% ${scene.style.imageCropRight}% ${scene.style.imageCropBottom}% ${scene.style.imageCropLeft}%)`,
+    filter: `brightness(${scene.style.imageBrightness})`,
+    opacity: scene.style.imageOpacity
+  };
+}
+
+function getExactTransformStyle(
+  scene: Scene,
+  target: "image" | "title" | "text" | "choices"
+): CSSProperties {
+  const style = scene.style;
+  const x =
+    target === "image"
+      ? style.imageOffsetX
+      : target === "title"
+        ? style.titleOffsetX
+      : target === "text"
+        ? style.textOffsetX
+        : style.choicesOffsetX;
+  const y =
+    target === "image"
+      ? style.imageOffsetY
+      : target === "title"
+        ? style.titleOffsetY
+      : target === "text"
+        ? style.textOffsetY
+        : style.choicesOffsetY;
+  const scale =
+    target === "image"
+      ? style.imageScale
+      : target === "title"
+        ? style.titleScale
+      : target === "text"
+        ? style.textScale
+        : style.choicesScale;
+
+  return {
+    transform: `translate(-50%, 0) translate(${x / 3}px, ${y / 3}px) scale(${scale})`
+  };
+}
+
+function getExactChoicesStyle(scene: Scene): CSSProperties {
+  return {
+    ...getExactTransformStyle(scene, "choices"),
+    color: scene.style.choicesTextColor || undefined,
+    fontSize: `${scene.style.choicesFontSize}px`,
+    width:
+      scene.style.choicesPanelWidth > 0 ? `${scene.style.choicesPanelWidth}px` : undefined,
+    minHeight:
+      scene.style.choicesPanelHeight > 0
+        ? `${scene.style.choicesPanelHeight}px`
+        : undefined
+  };
+}
+
+function getExactChoiceButtonStyle(scene: Scene): CSSProperties {
+  return {
+    ...getPanelVisualStyle({
+      transparent: scene.style.choicesPanelTransparent || scene.style.choicesPanelOpacity <= 0,
+      color: scene.style.choicesPanelColor || "#fffaf1",
+      borderColor: scene.style.choicesBorderColor || "#807058",
+      opacity: scene.style.choicesPanelOpacity
+    }),
+    color: scene.style.choicesTextColor || undefined,
+    fontSize: `${scene.style.choicesFontSize}px`,
+    padding: `${scene.style.choicesPaddingTop}px ${scene.style.choicesPaddingSide}px`
+  };
+}
+
+function getSceneFontFamily(fontFamily: string): string {
+  if (fontFamily === "serif") {
+    return 'Georgia, "Times New Roman", serif';
+  }
+  if (fontFamily === "mono") {
+    return '"Cascadia Mono", "Consolas", monospace';
+  }
+  return 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+}
+
+function getPanelVisualStyle({
+  transparent,
+  color,
+  borderColor,
+  opacity
+}: {
+  transparent: boolean;
+  color: string;
+  borderColor: string;
+  opacity: number;
+}): CSSProperties {
+  if (transparent || opacity <= 0) {
+    return {
+      background: "transparent",
+      border: 0,
+      boxShadow: "none",
+      backdropFilter: "none"
+    };
+  }
+
+  return {
+    background: colorToRgba(color, opacity),
+    borderColor: colorToRgba(borderColor, Math.min(1, Math.max(0.12, opacity))),
+    boxShadow: opacity < 0.08 ? "none" : undefined,
+    backdropFilter: "none"
+  };
+}
+
+function colorToRgba(color: string, opacity: number): string {
+  const normalized = color.trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(normalized)) {
+    return normalized;
+  }
+
+  const red = Number.parseInt(normalized.slice(1, 3), 16);
+  const green = Number.parseInt(normalized.slice(3, 5), 16);
+  const blue = Number.parseInt(normalized.slice(5, 7), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${Math.max(0, Math.min(1, opacity))})`;
+}
+
+export function toMediaSrc(imagePath: string): string {
+  const trimmedPath = imagePath.trim();
+
+  if (
+    trimmedPath.startsWith("file://") ||
+    trimmedPath.startsWith("http://") ||
+    trimmedPath.startsWith("https://") ||
+    trimmedPath.startsWith("data:")
+  ) {
+    return trimmedPath;
+  }
+
+  if (/^[a-zA-Z]:\\/.test(trimmedPath)) {
+    return `file:///${trimmedPath.replace(/\\/g, "/")}`;
+  }
+
+  return trimmedPath;
+}
+
+function useResolvedImageSrc(imagePath: string): string {
+  const [src, setSrc] = useState(() => toMediaSrc(imagePath));
+
+  useEffect(() => {
+    let isCurrent = true;
+    setSrc(toMediaSrc(imagePath));
+
+    if (!imagePath.trim() || !window.storyLife?.readImagePreview) {
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    window.storyLife
+      .readImagePreview(imagePath)
+      .then((result) => {
+        if (isCurrent && result.ok) {
+          setSrc(result.dataUrl);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [imagePath]);
+
+  return src;
+}
+
+function playChoiceClickSound() {
+  const AudioContextClass =
+    window.AudioContext ||
+    (window as typeof window & {
+      webkitAudioContext?: typeof AudioContext;
+    }).webkitAudioContext;
+
+  if (!AudioContextClass) {
+    return;
+  }
+
+  const audioContext = new AudioContextClass();
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  const now = audioContext.currentTime;
+
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(740, now);
+  oscillator.frequency.exponentialRampToValueAtTime(980, now + 0.07);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.045, now + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start(now);
+  oscillator.stop(now + 0.14);
+  oscillator.addEventListener("ended", () => void audioContext.close());
+}
+
+export type { RuntimeState };
