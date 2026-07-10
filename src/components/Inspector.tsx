@@ -46,6 +46,7 @@ interface InspectorProps {
   onAddChoice: (sceneId: SceneId) => void;
   onDeleteScene: (sceneId: SceneId) => void;
   onPickChoiceTarget: (sceneId: SceneId, choiceId: string) => void;
+  onSelectScene: (sceneId: SceneId) => void;
   onSceneLayoutClose: () => void;
   isPickingChoiceTarget: boolean;
 }
@@ -60,6 +61,7 @@ export function Inspector({
   onAddChoice,
   onDeleteScene,
   onPickChoiceTarget,
+  onSelectScene,
   onSceneLayoutClose,
   isPickingChoiceTarget
 }: InspectorProps) {
@@ -672,10 +674,12 @@ export function Inspector({
       {isScenePreviewOpen && (
         <ScenePreviewModal
           scene={selectedScene}
+          scenes={scenes}
           projectTheme={projectTheme}
           onUpdateScene={(updater) =>
             onUpdateScene(selectedScene.id, updater, false)
           }
+          onSelectScene={onSelectScene}
           onClose={closeScenePreview}
         />
       )}
@@ -2241,19 +2245,28 @@ function getLayoutLabel(layoutType: SceneLayoutType): string {
 
 interface ScenePreviewModalProps {
   scene: Scene;
+  scenes: Scene[];
   projectTheme: ProjectTheme;
   onUpdateScene: (updater: (scene: Scene) => Scene) => void;
+  onSelectScene: (sceneId: SceneId) => void;
   onClose: () => void;
 }
 
 function ScenePreviewModal({
   scene,
+  scenes,
   projectTheme,
   onUpdateScene,
+  onSelectScene,
   onClose
 }: ScenePreviewModalProps) {
   const [draftScene, setDraftScene] = useState(scene);
   const draftSceneRef = useRef(scene);
+  const sceneIndex = scenes.findIndex((item) => item.id === scene.id);
+  const previousScene = sceneIndex > 0 ? scenes[sceneIndex - 1] : null;
+  const nextScene = sceneIndex >= 0 && sceneIndex < scenes.length - 1
+    ? scenes[sceneIndex + 1]
+    : null;
 
   useEffect(() => {
     draftSceneRef.current = scene;
@@ -2269,6 +2282,17 @@ function ScenePreviewModal({
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <button
+        type="button"
+        className="scene-layout-scene-nav scene-layout-scene-nav-previous"
+        aria-label="Previous scene"
+        title="Previous scene"
+        disabled={!previousScene}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={() => previousScene && onSelectScene(previousScene.id)}
+      >
+        <span aria-hidden="true">&lsaquo;</span>
+      </button>
       <section
         className="scene-preview-modal"
         role="dialog"
@@ -2307,6 +2331,17 @@ function ScenePreviewModal({
           fullSize
         />
       </section>
+      <button
+        type="button"
+        className="scene-layout-scene-nav scene-layout-scene-nav-next"
+        aria-label="Next scene"
+        title="Next scene"
+        disabled={!nextScene}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={() => nextScene && onSelectScene(nextScene.id)}
+      >
+        <span aria-hidden="true">&rsaquo;</span>
+      </button>
     </div>
   );
 }
