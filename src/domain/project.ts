@@ -112,6 +112,7 @@ export const SCENE_LAYOUT_OPTIONS: Array<{
 
 export type SceneTransition =
   | "fade"
+  | "crossfade"
   | "zoomIn"
   | "zoomOut"
   | "pushLeft"
@@ -122,18 +123,34 @@ export type SceneTransition =
 
 export type SceneTransitionOverride = SceneTransition | "project";
 
+export type SceneOrnamentStyle =
+  | "none"
+  | "gilded"
+  | "gothic"
+  | "forest"
+  | "crimson"
+  | "ocean"
+  | "celestial"
+  | "noir"
+  | "sakura"
+  | "desert"
+  | "frost"
+  | "cyber"
+  | "fairytale";
+
 export const SCENE_TRANSITION_OPTIONS: Array<{
   value: SceneTransition;
   label: string;
 }> = [
   { value: "fade", label: "Soft fade" },
+  { value: "crossfade", label: "Smooth crossfade" },
   { value: "zoomIn", label: "Smooth zoom in" },
   { value: "zoomOut", label: "Smooth zoom out" },
   { value: "pushLeft", label: "Push from right" },
   { value: "pushRight", label: "Push from left" },
   { value: "pushUp", label: "Push from bottom" },
   { value: "pushDown", label: "Push from top" },
-  { value: "pageTurn", label: "Book page turn" }
+  { value: "pageTurn", label: "Apple-style page curl" }
 ];
 
 export interface Position {
@@ -199,6 +216,7 @@ export interface ProjectTheme {
 
 export interface SceneStyle {
   sceneTransition: SceneTransitionOverride;
+  ornamentStyle: SceneOrnamentStyle;
   backgroundColor: string;
   textColor: string;
   titlePanelColor: string;
@@ -645,6 +663,7 @@ export function createDefaultProjectTheme(): ProjectTheme {
 export function createDefaultSceneStyle(): SceneStyle {
   return {
     sceneTransition: "project",
+    ornamentStyle: "none",
     backgroundColor: "",
     textColor: "",
     titlePanelColor: "",
@@ -1417,6 +1436,7 @@ function validateSceneStyle(rawStyle: unknown): SceneStyle {
 
   return {
     sceneTransition: readSceneTransitionOverride(rawStyle.sceneTransition),
+    ornamentStyle: readSceneOrnamentStyle(rawStyle.ornamentStyle),
     backgroundColor: readColor(rawStyle.backgroundColor, ""),
     textColor: readColor(rawStyle.textColor, ""),
     titlePanelColor: readColor(rawStyle.titlePanelColor, ""),
@@ -1705,7 +1725,8 @@ function readSceneType(value: unknown): SceneType {
 }
 
 function readSceneTransition(value: unknown): SceneTransition {
-  return value === "zoomIn" ||
+  return value === "crossfade" ||
+    value === "zoomIn" ||
     value === "zoomOut" ||
     value === "pushLeft" ||
     value === "pushRight" ||
@@ -1718,6 +1739,23 @@ function readSceneTransition(value: unknown): SceneTransition {
 
 function readSceneTransitionOverride(value: unknown): SceneTransitionOverride {
   return value === "project" ? "project" : readSceneTransition(value);
+}
+
+function readSceneOrnamentStyle(value: unknown): SceneOrnamentStyle {
+  return value === "gilded" ||
+    value === "gothic" ||
+    value === "forest" ||
+    value === "crimson" ||
+    value === "ocean" ||
+    value === "celestial" ||
+    value === "noir" ||
+    value === "sakura" ||
+    value === "desert" ||
+    value === "frost" ||
+    value === "cyber" ||
+    value === "fairytale"
+    ? value
+    : "none";
 }
 
 function readSceneNodeColor(value: unknown): SceneNodeColor {

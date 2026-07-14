@@ -11,7 +11,7 @@ import {
   SceneId,
   StoryProject
 } from "./domain/project";
-import { ScenePhone, toMediaSrc } from "./components/ScenePhone";
+import { TransitionedScenePhone, toMediaSrc } from "./components/ScenePhone";
 import "./styles/app.css";
 import "./styles/player.css";
 
@@ -121,7 +121,7 @@ function ExportedGame() {
         <audio ref={sceneAudioRef} src={toMediaSrc(currentScene.soundPath)} />
       )}
       <div className="export-game-viewport">
-        <ScenePhone
+        <TransitionedScenePhone
           project={project}
           scene={currentScene}
           visibleChoices={visibleChoices}

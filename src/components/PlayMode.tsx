@@ -9,7 +9,7 @@ import {
   SceneId,
   StoryProject
 } from "../domain/project";
-import { ScenePhone, toMediaSrc } from "./ScenePhone";
+import { TransitionedScenePhone, toMediaSrc } from "./ScenePhone";
 
 interface PlayModeProps {
   project: StoryProject;
@@ -211,7 +211,7 @@ export function PlayMode({
           <audio ref={sceneAudioRef} src={toMediaSrc(activeScene.soundPath)} />
         )}
         <div className="phone-preview">
-          <ScenePhone
+          <TransitionedScenePhone
             project={project}
             scene={activeScene}
             visibleChoices={visibleChoices}

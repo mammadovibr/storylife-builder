@@ -1,12 +1,95 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties
+} from "react";
 import { getActiveSceneImageVariant, type Choice, type RuntimeState, type Scene, type StoryProject } from "../domain/project";
 import { getChoiceButtonFrameStyle } from "../utils/choiceButtonFrames";
 import { applyColorOpacity } from "../utils/colorOpacity";
 import { AnimatedSceneImage } from "./AnimatedSceneImage";
 
-interface VisibleChoice {
+export interface VisibleChoice {
   choice: Choice;
   isAvailable: boolean;
+}
+
+interface ScenePhoneSnapshot {
+  scene: Scene;
+  visibleChoices: VisibleChoice[];
+}
+
+export function TransitionedScenePhone(props: ScenePhoneProps) {
+  const { project, scene, visibleChoices, onChoice, displayMode = "preview" } = props;
+  const latestSnapshotRef = useRef<ScenePhoneSnapshot>({ scene, visibleChoices });
+  const transitionTimerRef = useRef<number | null>(null);
+  const [outgoing, setOutgoing] = useState<ScenePhoneSnapshot | null>(null);
+  const [transitionRevision, setTransitionRevision] = useState(0);
+  const sceneTransition = resolveSceneTransition(project, scene);
+
+  useLayoutEffect(() => {
+    const previousSnapshot = latestSnapshotRef.current;
+    latestSnapshotRef.current = { scene, visibleChoices };
+    if (previousSnapshot.scene.id === scene.id) {
+      return;
+    }
+
+    setOutgoing(previousSnapshot);
+    setTransitionRevision((revision) => revision + 1);
+    if (transitionTimerRef.current !== null) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setOutgoing(null);
+      transitionTimerRef.current = null;
+    }, getSceneTransitionDuration(sceneTransition));
+  }, [scene, sceneTransition, visibleChoices]);
+
+  useEffect(
+    () => () => {
+      if (transitionTimerRef.current !== null) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+    },
+    []
+  );
+
+  return (
+    <div
+      className={`scene-transition-stage scene-transition-stage-${sceneTransition} ${
+        outgoing ? "is-transitioning" : ""
+      } ${displayMode === "export" ? "is-export" : "is-preview"}`}
+    >
+      {outgoing && (
+        <div
+          className="scene-transition-layer is-outgoing"
+          key={`outgoing-${outgoing.scene.id}-${transitionRevision}`}
+          aria-hidden="true"
+        >
+          <ScenePhone
+            project={project}
+            scene={outgoing.scene}
+            visibleChoices={outgoing.visibleChoices}
+            onChoice={onChoice}
+            displayMode={displayMode}
+          />
+        </div>
+      )}
+      <div
+        className="scene-transition-layer is-incoming"
+        key={`incoming-${scene.id}-${transitionRevision}`}
+      >
+        <ScenePhone
+          project={project}
+          scene={scene}
+          visibleChoices={visibleChoices}
+          onChoice={onChoice}
+          displayMode={displayMode}
+        />
+      </div>
+    </div>
+  );
 }
 
 interface ScenePhoneProps {
@@ -31,14 +114,9 @@ export function ScenePhone({
       : scene.layoutType;
   const choicesAreTransparent =
     scene.style.choicesPanelTransparent || scene.style.choicesPanelOpacity <= 0;
-  const sceneTransition =
-    scene.style.sceneTransition === "project"
-      ? project.theme.sceneTransition
-      : scene.style.sceneTransition;
-
   return (
     <article
-      className={`play-card-exact scene-transition-${sceneTransition} scene-live-preview-phone scene-preview-layout-${effectiveLayout} ${
+      className={`play-card-exact scene-live-preview-phone scene-preview-layout-${effectiveLayout} scene-ornament-${scene.style.ornamentStyle} ${
         displayMode === "export" ? "scene-export-viewport" : ""
       }`}
       key={scene.id}
@@ -61,7 +139,11 @@ export function ScenePhone({
               disabled={!isAvailable}
               className={`choice-preview-input exact-play-choice-button ${
                 !isAvailable ? "locked-choice" : ""
-              } ${choicesAreTransparent ? "transparent-choice-button" : ""}`}
+              } ${choicesAreTransparent ? "transparent-choice-button" : ""} ${
+                scene.style.choicesBorderEnabled && scene.style.ornamentStyle !== "none"
+                  ? "scene-ornament-panel"
+                  : ""
+              }`}
               style={getExactChoiceButtonStyle(scene)}
               onClick={() => {
                 playChoiceClickSound();
@@ -81,6 +163,16 @@ export function ScenePhone({
       </div>
     </article>
   );
+}
+
+function resolveSceneTransition(project: StoryProject, scene: Scene) {
+  return scene.style.sceneTransition === "project"
+    ? project.theme.sceneTransition
+    : scene.style.sceneTransition;
+}
+
+function getSceneTransitionDuration(transition: ReturnType<typeof resolveSceneTransition>) {
+  return transition === "pageTurn" ? 980 : transition === "crossfade" ? 720 : 640;
 }
 
 function ExactSceneVisual({ scene, mediaSrc }: { scene: Scene; mediaSrc: string }) {
@@ -131,7 +223,14 @@ function ExactSceneText({
   project: StoryProject;
 }) {
   return (
-    <section className="scene-preview-text-panel" style={getExactTextStyle(scene, project)}>
+    <section
+      className={`scene-preview-text-panel ${
+        scene.style.textBorderEnabled && scene.style.ornamentStyle !== "none"
+          ? "scene-ornament-panel"
+          : ""
+      }`}
+      style={getExactTextStyle(scene, project)}
+    >
       <p style={getTextContentOffsetStyle(scene, "text")}>{scene.text}</p>
     </section>
   );
@@ -149,7 +248,14 @@ function ExactSceneTitle({
   }
 
   return (
-    <section className="scene-preview-title-panel" style={getExactTitleStyle(scene, project)}>
+    <section
+      className={`scene-preview-title-panel ${
+        scene.style.titleBorderEnabled && scene.style.ornamentStyle !== "none"
+          ? "scene-ornament-panel"
+          : ""
+      }`}
+      style={getExactTitleStyle(scene, project)}
+    >
       <h1
         style={{
           fontSize: `${scene.style.titleFontSize}px`,

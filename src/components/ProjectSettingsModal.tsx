@@ -61,17 +61,17 @@ function ProjectThemePreview({ theme }: { theme: ProjectTheme }) {
           color: theme.textColor
         }}
       >
-        <div className="scene-image-frame">
+        <div className="scene-image-frame project-settings-image-frame">
           <div className="project-settings-image-placeholder" />
         </div>
-        <section className="play-content">
+        <section className="play-content project-settings-copy-preview">
           <h1>Scene title</h1>
           <p>
             This preview shows the global project colors before scene-specific
             styling is applied.
           </p>
         </section>
-        <div className="play-choices">
+        <div className="play-choices project-settings-choice-preview">
           <button type="button">Choice button</button>
           <button type="button">Another choice</button>
         </div>

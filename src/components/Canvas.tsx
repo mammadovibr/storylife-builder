@@ -72,6 +72,11 @@ function CanvasContent({
     x: number;
     y: number;
   } | null>(null);
+  const [dragPreview, setDragPreview] = useState<{
+    sceneId: SceneId;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
 
   useEffect(() => {
     window.requestAnimationFrame(() => {
@@ -274,9 +279,17 @@ function CanvasContent({
 
   const handleNodeDragStart: NodeDragHandler = (event, node) => {
     ctrlDragSourceRef.current = "ctrlKey" in event && event.ctrlKey ? node.id : null;
+    const point = readClientPoint(event);
+    setDragPreview({ sceneId: node.id, ...point });
+  };
+
+  const handleNodeDrag: NodeDragHandler = (event, node) => {
+    const point = readClientPoint(event);
+    setDragPreview({ sceneId: node.id, ...point });
   };
 
   const handleNodeDragStop: NodeDragHandler = (_event, node) => {
+    setDragPreview(null);
     if (ctrlDragSourceRef.current === node.id) {
       ctrlDragSourceRef.current = null;
       onCreateConnectedScene(node.id, node.position);
@@ -335,6 +348,7 @@ function CanvasContent({
           });
         }}
         onNodeDragStart={handleNodeDragStart}
+        onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
         onConnect={handleConnect}
         nodesDraggable
@@ -359,6 +373,14 @@ function CanvasContent({
           maskColor="rgba(12, 17, 24, 0.68)"
         />
       </ReactFlow>
+      {dragPreview && (
+        <NodeDragPreview
+          scene={scenes.find((scene) => scene.id === dragPreview.sceneId) ?? null}
+          startSceneId={startSceneId}
+          clientX={dragPreview.clientX}
+          clientY={dragPreview.clientY}
+        />
+      )}
       {colorMenu && (
         <div
           className="node-color-menu"
@@ -381,6 +403,58 @@ function CanvasContent({
       )}
     </section>
   );
+}
+
+function NodeDragPreview({
+  scene,
+  startSceneId,
+  clientX,
+  clientY
+}: {
+  scene: Scene | null;
+  startSceneId: SceneId;
+  clientX: number;
+  clientY: number;
+}) {
+  if (!scene) return null;
+
+  return (
+    <div
+      className={`node-drag-preview react-flow__node-default ${getNodeClassName(
+        scene,
+        startSceneId
+      )}`}
+      style={{ left: clientX, top: clientY }}
+      aria-hidden="true"
+    >
+      <div className="story-node">
+        {scene.imagePath.trim() !== "" && (
+          <NodeThumbnail
+            mediaPath={scene.imagePath}
+            mediaType={scene.visualMediaType}
+          />
+        )}
+        <strong>{scene.title || "Untitled scene"}</strong>
+        <small className="node-layout-badge">
+          {formatLayoutName(scene.layoutType)}
+        </small>
+      </div>
+    </div>
+  );
+}
+
+function readClientPoint(event: unknown): { clientX: number; clientY: number } {
+  const pointerEvent = event as {
+    clientX?: number;
+    clientY?: number;
+    touches?: ArrayLike<{ clientX: number; clientY: number }>;
+    changedTouches?: ArrayLike<{ clientX: number; clientY: number }>;
+  };
+  const touch = pointerEvent.touches?.[0] ?? pointerEvent.changedTouches?.[0];
+  return {
+    clientX: touch?.clientX ?? pointerEvent.clientX ?? 0,
+    clientY: touch?.clientY ?? pointerEvent.clientY ?? 0
+  };
 }
 
 function NodeThumbnail({

@@ -306,6 +306,35 @@ airplane-mode startup and all 12 cached build files.
   to be scrolled above Android/iOS browser and navigation bars. Horizontal overflow
   remains clipped, and choice buttons use direct touch handling.
 
+## Transition and ornate-theme follow-up
+
+- Closing Scene Layout must not change the React Flow camera. The old close handler
+  deliberately remounted Canvas and incremented the focus-selected signal; it now
+  does neither. A browser check confirmed the viewport matrix was byte-for-byte
+  identical before opening and after closing Scene Layout.
+- Canvas renders `node-drag-preview` as a fixed, pointer-independent copy of the
+  scene node while React Flow is dragging. It sits at z-index 100000 and includes
+  the current thumbnail, title, layout badge, node color, and scene-type outline.
+  Keep this fallback even if React Flow's `.dragging` node is styled as visible;
+  the library can remove its own node for individual drag frames.
+- Scene changes use `TransitionedScenePhone`, which keeps outgoing and incoming
+  scenes mounted as overlapping layers until the animation ends. Do not return to
+  entry-only animation classes on `ScenePhone`; that produced a blank frame between
+  scenes. Fade, crossfade, zooms, pushes, and Apple-style page curl all have paired
+  incoming/outgoing keyframes. Page curl reveals the already-rendered next scene
+  underneath a 3D turning page with a corner highlight and edge shadow.
+- Changing the transition in Project Settings resets every scene override to
+  `sceneTransition: "project"`, so the global setting really applies everywhere.
+  Scene Layout `Apply to all scenes` still copies an explicit per-scene transition
+  when that is what the author requests.
+- Scene Layout has an `Ornate` color-scheme tab with 12 gradient themes. Each theme
+  stores an `ornamentStyle` id in SceneStyle and uses a separate SVG 9-slice border
+  under `src/assets/theme-ornaments/`. Border checkboxes still control whether the
+  ornament is visible for title, scene text, and choices. Vite inlines these SVGs
+  into both editor and exported-player CSS, so exported games keep them offline.
+- Project Settings uses a compact 280x430 preview with short content cells, leaving
+  enough visible background to judge the global colors.
+
 The standalone frontend command below currently reports older type errors in the legacy AI story code and some Inspector helpers:
 
 ```powershell

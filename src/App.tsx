@@ -827,7 +827,17 @@ export default function App() {
       theme: {
         ...currentProject.theme,
         ...patch
-      }
+      },
+      scenes:
+        patch.sceneTransition === undefined
+          ? currentProject.scenes
+          : currentProject.scenes.map((scene) => ({
+              ...scene,
+              style: {
+                ...scene.style,
+                sceneTransition: "project"
+              }
+            }))
     }), false);
   }
 
@@ -1325,10 +1335,7 @@ export default function App() {
                 setStatus("Click a target node on the canvas");
               }}
               onSelectScene={setSelectedSceneId}
-              onSceneLayoutClose={() => {
-                setCanvasRefreshSignal((currentSignal) => currentSignal + 1);
-                setCanvasFocusSelectedSignal((currentSignal) => currentSignal + 1);
-              }}
+              onSceneLayoutClose={() => undefined}
               onApplySceneLayoutToAll={applySceneLayoutToAll}
               pickingChoiceId={pendingChoiceTarget?.choiceId ?? null}
               focusChoiceId={focusChoiceId}

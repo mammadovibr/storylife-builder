@@ -1,4 +1,4 @@
-const CACHE_NAME = "storylife-offline-e5f29db4c1227d65";
+const CACHE_NAME = "storylife-offline-edfd627dfde39e2b";
 const PRECACHE_URLS = [
   "./",
   "./assets/canvas-decor-balloon.png",
@@ -6,8 +6,8 @@ const PRECACHE_URLS = [
   "./assets/canvas-decor-mountains-film.png",
   "./assets/canvas-story-decor-source.png",
   "./assets/canvas-story-decor.png",
-  "./assets/main-BLBt8ibb.js",
-  "./assets/main-DClHne6M.css",
+  "./assets/main-BiWP_yZ5.css",
+  "./assets/main-C3nKDOYu.js",
   "./icons/storylife-180.png",
   "./icons/storylife-192.png",
   "./icons/storylife-512.png",
