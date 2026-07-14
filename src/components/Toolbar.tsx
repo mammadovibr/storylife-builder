@@ -7,17 +7,21 @@ interface ToolbarProps {
   onProjectNameChange: (projectName: string) => void;
   onNewProject: () => void;
   onSave: () => void;
+  onSaveAs: () => void;
   onLoad: () => void;
   onExport: () => void;
+  onArrangeNodes: () => void;
   onProjectManager: () => void;
-  onAIAssistant: () => void;
+  onImageStudio: () => void;
   onProjectSettings: () => void;
   onPlay: () => void;
   onPlayFromHere: () => void;
   onDuplicateScene: () => void;
   onRestoreBackup: () => void;
+  onExit: () => void;
   canUseSelectedSceneActions: boolean;
   canExportGame: boolean;
+  canExitApplication: boolean;
 }
 
 export function Toolbar({
@@ -27,17 +31,21 @@ export function Toolbar({
   onProjectNameChange,
   onNewProject,
   onSave,
+  onSaveAs,
   onLoad,
   onExport,
+  onArrangeNodes,
   onProjectManager,
-  onAIAssistant,
+  onImageStudio,
   onProjectSettings,
   onPlay,
   onPlayFromHere,
   onDuplicateScene,
   onRestoreBackup,
+  onExit,
   canUseSelectedSceneActions,
-  canExportGame
+  canExportGame,
+  canExitApplication
 }: ToolbarProps) {
   const [isMenuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -85,10 +93,20 @@ export function Toolbar({
       />
       <div className="toolbar-actions">
         <button type="button" onClick={onSave}>
-          Save Project
+          Save
+        </button>
+        <button type="button" onClick={onSaveAs}>
+          Save As
         </button>
         <button type="button" onClick={onLoad}>
           Load Project
+        </button>
+        <button
+          type="button"
+          className="ai-toolbar-button"
+          onClick={onImageStudio}
+        >
+          AI Image Studio
         </button>
         <button
           type="button"
@@ -121,10 +139,21 @@ export function Toolbar({
                 New Project
               </button>
               <button type="button" role="menuitem" onClick={() => runMenuAction(onSave)}>
-                Save Project
+                Save
+              </button>
+              <button type="button" role="menuitem" onClick={() => runMenuAction(onSaveAs)}>
+                Save As
               </button>
               <button type="button" role="menuitem" onClick={() => runMenuAction(onLoad)}>
                 Load Project
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => runMenuAction(onArrangeNodes)}
+                title="Arrange scenes from top to bottom following story transitions"
+              >
+                Arrange Nodes
               </button>
               <button
                 type="button"
@@ -138,14 +167,6 @@ export function Toolbar({
                 }
               >
                 {canExportGame ? "Export Game" : "Desktop Export Required"}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="ai-toolbar-button"
-                onClick={() => runMenuAction(onAIAssistant)}
-              >
-                AI Assistant
               </button>
               <button type="button" role="menuitem" onClick={() => runMenuAction(onProjectSettings)}>
                 Project Settings
@@ -161,6 +182,16 @@ export function Toolbar({
               >
                 Duplicate Scene
               </button>
+              {canExitApplication && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="danger-button toolbar-exit-button"
+                  onClick={() => runMenuAction(onExit)}
+                >
+                  Exit
+                </button>
+              )}
             </div>
           )}
         </div>

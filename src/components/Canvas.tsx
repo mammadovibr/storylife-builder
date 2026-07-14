@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Background,
   Connection,
@@ -31,6 +31,7 @@ interface CanvasProps {
   onClearSelection: () => void;
   onMoveScene: (sceneId: SceneId, position: Position) => void;
   onConnectScenes: (sourceSceneId: SceneId, targetSceneId: SceneId) => void;
+  onCreateConnectedScene: (sourceSceneId: SceneId, position: Position) => void;
   onChangeSceneNodeColor: (
     sceneId: SceneId,
     nodeColor: SceneNodeColor
@@ -60,10 +61,12 @@ function CanvasContent({
   onClearSelection,
   onMoveScene,
   onConnectScenes,
+  onCreateConnectedScene,
   onChangeSceneNodeColor,
   onApplyMediaToScene
 }: CanvasProps) {
   const reactFlow = useReactFlow();
+  const ctrlDragSourceRef = useRef<SceneId | null>(null);
   const [colorMenu, setColorMenu] = useState<{
     sceneId: SceneId;
     x: number;
@@ -96,7 +99,7 @@ function CanvasContent({
         }
       );
     });
-  }, [focusSelectedSignal, reactFlow, scenes, selectedSceneId]);
+  }, [focusSelectedSignal, reactFlow]);
   const nodes = useMemo<Node[]>(
     () =>
       scenes.map((scene) => ({
@@ -139,7 +142,10 @@ function CanvasContent({
               }}
             >
               {scene.imagePath.trim() !== "" && (
-                <NodeThumbnail imagePath={scene.imagePath} />
+                <NodeThumbnail
+                  mediaPath={scene.imagePath}
+                  mediaType={scene.visualMediaType}
+                />
               )}
               <strong>{scene.title || "Untitled scene"}</strong>
               <small className="node-layout-badge">
@@ -266,7 +272,17 @@ function CanvasContent({
     [scenes, selectedSceneId, startSceneId]
   );
 
+  const handleNodeDragStart: NodeDragHandler = (event, node) => {
+    ctrlDragSourceRef.current = "ctrlKey" in event && event.ctrlKey ? node.id : null;
+  };
+
   const handleNodeDragStop: NodeDragHandler = (_event, node) => {
+    if (ctrlDragSourceRef.current === node.id) {
+      ctrlDragSourceRef.current = null;
+      onCreateConnectedScene(node.id, node.position);
+      return;
+    }
+    ctrlDragSourceRef.current = null;
     onMoveScene(node.id, node.position);
   };
 
@@ -318,6 +334,7 @@ function CanvasContent({
             y: event.clientY
           });
         }}
+        onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
         onConnect={handleConnect}
         nodesDraggable
@@ -327,15 +344,18 @@ function CanvasContent({
         zoomOnScroll
         zoomOnPinch
         zoomOnDoubleClick
+        minZoom={0.05}
         preventScrolling={false}
         fitView={false}
       >
         <Background color="#d7d0c3" gap={28} />
         <Controls showInteractive={false} />
         <MiniMap
-          nodeColor={(node) =>
-            node.id === selectedSceneId ? "#4fc3f7" : "#6b778d"
-          }
+          nodeColor={(node) => {
+            if (node.id === selectedSceneId) return "#4fc3f7";
+            const scene = scenes.find((item) => item.id === node.id);
+            return NODE_COLORS.find((color) => color.value === scene?.nodeColor)?.hex ?? "#eee4d5";
+          }}
           maskColor="rgba(12, 17, 24, 0.68)"
         />
       </ReactFlow>
@@ -363,23 +383,33 @@ function CanvasContent({
   );
 }
 
-function NodeThumbnail({ imagePath }: { imagePath: string }) {
-  const [src, setSrc] = useState(() => toImageSrc(imagePath));
+function NodeThumbnail({
+  mediaPath,
+  mediaType
+}: {
+  mediaPath: string;
+  mediaType: "image" | "video";
+}) {
+  const [src, setSrc] = useState(() => getNodeMediaSrc(mediaPath));
   const [isHidden, setHidden] = useState(false);
 
   useEffect(() => {
     let isCurrent = true;
     setHidden(false);
-    setSrc(toImageSrc(imagePath));
+    setSrc(getNodeMediaSrc(mediaPath));
 
-    if (!window.storyLife?.readImagePreview) {
+    if (
+      !isLocalPath(mediaPath) ||
+      window.storyLife?.getMediaUrl ||
+      !window.storyLife?.readImagePreview
+    ) {
       return () => {
         isCurrent = false;
       };
     }
 
     window.storyLife
-      .readImagePreview(imagePath)
+      .readImagePreview(mediaPath)
       .then((result) => {
         if (!isCurrent) {
           return;
@@ -387,12 +417,12 @@ function NodeThumbnail({ imagePath }: { imagePath: string }) {
         if (result.ok) {
           setSrc(result.dataUrl);
           setHidden(false);
-        } else if (isLocalPath(imagePath)) {
+        } else if (isLocalPath(mediaPath)) {
           setHidden(true);
         }
       })
       .catch(() => {
-        if (isCurrent && isLocalPath(imagePath)) {
+        if (isCurrent && isLocalPath(mediaPath)) {
           setHidden(true);
         }
       });
@@ -400,21 +430,51 @@ function NodeThumbnail({ imagePath }: { imagePath: string }) {
     return () => {
       isCurrent = false;
     };
-  }, [imagePath]);
+  }, [mediaPath]);
 
-  if (isHidden) {
+  if (isHidden || !src) {
     return null;
   }
 
-  return (
+  return mediaType === "video" ? (
+    <video
+      className="story-node-thumbnail"
+      src={src}
+      muted
+      playsInline
+      preload="metadata"
+      onLoadedMetadata={(event) => {
+        const video = event.currentTarget;
+        video.pause();
+        if (Number.isFinite(video.duration) && video.duration > 0.1) {
+          video.currentTime = 0.1;
+        }
+      }}
+      onError={() => setHidden(true)}
+    />
+  ) : (
     <img
       className="story-node-thumbnail"
       src={src}
       alt=""
       draggable={false}
+      loading="lazy"
+      decoding="async"
       onError={() => setHidden(true)}
     />
   );
+}
+
+function getNodeMediaSrc(mediaPath: string): string {
+  if (isLocalPath(mediaPath)) {
+    if (window.storyLife?.getMediaUrl) {
+      return window.storyLife.getMediaUrl(mediaPath);
+    }
+    if (window.storyLife?.readImagePreview) {
+      return "";
+    }
+  }
+  return toImageSrc(mediaPath);
 }
 
 const NODE_COLORS: Array<{
@@ -422,7 +482,7 @@ const NODE_COLORS: Array<{
   label: string;
   hex: string;
 }> = [
-  { value: "slate", label: "Slate", hex: "#334155" },
+  { value: "slate", label: "Default", hex: "#eee4d5" },
   { value: "green", label: "Green", hex: "#16a34a" },
   { value: "blue", label: "Blue", hex: "#2563eb" },
   { value: "purple", label: "Purple", hex: "#9333ea" },

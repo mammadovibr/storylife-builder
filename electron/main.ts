@@ -1,6 +1,9 @@
 import electron from "electron";
 import type { OpenDialogOptions } from "electron";
-import { access, copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
+import { access, copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import isDev from "electron-is-dev";
@@ -9,17 +12,35 @@ import {
   isStoryLifeArchive,
   readStoryLifeArchive
 } from "./projectArchive.js";
+import { CAPY_3_STORY_REFERENCE } from "./storyReferenceLibrary.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const { app, BrowserWindow, dialog, ipcMain } = electron;
+const { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol } = electron;
+const LOCAL_MEDIA_SCHEME = "storylife-media";
 const remoteDebuggingPort = process.env.STORYLIFE_REMOTE_DEBUGGING_PORT;
 const smokeResultPath = process.env.STORYLIFE_SMOKE_RESULT;
 const DEFAULT_AI_MODEL = "gpt-5.4";
 const activeAIRequests = new Map<string, AbortController>();
+const closeApprovedWindowIds = new Set<number>();
+let isApplicationQuitting = false;
+let desktopMediaCacheRoot = "";
 
 if (remoteDebuggingPort) {
   app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort);
 }
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: LOCAL_MEDIA_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true
+    }
+  }
+]);
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -38,10 +59,22 @@ function createWindow() {
   });
 
   if (isDev) {
-    void mainWindow.loadURL("http://127.0.0.1:5173");
+    void mainWindow.loadURL(process.env.STORYLIFE_DEV_URL || "http://127.0.0.1:5173");
   } else {
     void mainWindow.loadFile(join(__dirname, "../dist/index.html"));
   }
+
+  mainWindow.on("close", (event) => {
+    if (isApplicationQuitting || closeApprovedWindowIds.has(mainWindow.id)) {
+      return;
+    }
+    event.preventDefault();
+    mainWindow.webContents.send("app:closeRequested");
+  });
+
+  mainWindow.on("closed", () => {
+    closeApprovedWindowIds.delete(mainWindow.id);
+  });
 
   if (smokeResultPath) {
     mainWindow.webContents.once("did-finish-load", async () => {
@@ -76,12 +109,48 @@ function createWindow() {
             };
             await wait(200);
             const text = document.body.innerText;
+            const streamingMediaUrl = window.storyLife?.getMediaUrl(
+              ${JSON.stringify(join(process.cwd(), "public/icons/storylife-180.png"))}
+            );
+            const streamingMediaResponse = streamingMediaUrl
+              ? await fetch(streamingMediaUrl).catch(() => null)
+              : null;
+            const streamingMediaBytes = streamingMediaResponse?.ok
+              ? (await streamingMediaResponse.arrayBuffer()).byteLength
+              : 0;
+            const streamingRangeResponse = streamingMediaUrl
+              ? await fetch(streamingMediaUrl, {
+                  headers: { Range: "bytes=0-31" }
+                }).catch(() => null)
+              : null;
+            const streamingRangeBytes = streamingRangeResponse?.ok
+              ? (await streamingRangeResponse.arrayBuffer()).byteLength
+              : 0;
+            const inspectorMenusInitiallyCollapsed =
+              document.querySelectorAll(".inspector-collapsible .collapse-body").length === 0 &&
+              !document.querySelector(".scene-image-section");
+            const sceneMediaMenuClicked = clickButton("Scene Picture / Video");
+            await wait(50);
+            const canOpenSceneMediaMenu = Boolean(
+              document.querySelector(".scene-image-section")
+            );
+            const sceneMediaPathInput = document.querySelector(
+              ".scene-image-section input:not(.hidden-file-input)"
+            );
+            if (sceneMediaPathInput) {
+              setNativeValue(
+                sceneMediaPathInput,
+                ${JSON.stringify(join(process.cwd(), "public/icons/storylife-180.png"))}
+              );
+              await wait(100);
+            }
+            clickButton("Scene Picture / Video");
             const titleInput = findFieldByLabel("Title", "input");
             const sceneTextArea = findFieldByLabel("Text", "textarea");
             if (titleInput) setNativeValue(titleInput, "Smoke Scene Title");
             if (sceneTextArea) setNativeValue(sceneTextArea, "Smoke scene text typed into inspector.");
             await wait(100);
-            const addChoiceClicked = clickButton("Add Choice");
+            const addChoiceClicked = clickButton("Choice + Scene");
             await wait(150);
             let choiceInput = findFieldByLabel("Choice text", "textarea, input");
             if (!choiceInput) {
@@ -93,12 +162,82 @@ function createWindow() {
             await wait(100);
             const sceneLayoutClicked = clickButton("Scene Layout");
             await wait(150);
+            const sceneLayoutOpened = Boolean(document.querySelector(".scene-preview-modal"));
+            const choicesTargetButton = [...document.querySelectorAll(
+              ".scene-layout-target-tabs button"
+            )].find((button) => button.textContent.trim() === "Choices");
+            if (choicesTargetButton instanceof HTMLButtonElement) choicesTargetButton.click();
+            await wait(50);
+            const choiceFrameDetails = document.querySelector(".choice-frame-details");
+            if (choiceFrameDetails instanceof HTMLDetailsElement) choiceFrameDetails.open = true;
+            const firstCraftedFrame = document.querySelector(
+              '.choice-frame-option[aria-label="Parchment Gold"]'
+            );
+            if (firstCraftedFrame instanceof HTMLButtonElement) firstCraftedFrame.click();
+            await wait(50);
+            const styledChoiceFrame = document.querySelector(".choice-preview-frame");
+            const styledChoiceFrameBackground = styledChoiceFrame
+              ? getComputedStyle(styledChoiceFrame).backgroundImage
+              : "";
+            const nativeChoiceFrameWorks =
+              Boolean(firstCraftedFrame) &&
+              styledChoiceFrameBackground.includes("linear-gradient") &&
+              !styledChoiceFrameBackground.includes("url(");
+            const nextSceneButton = document.querySelector(
+              '.scene-layout-scene-nav-button[aria-label="Next scene"]'
+            );
+            if (nextSceneButton instanceof HTMLButtonElement) nextSceneButton.click();
+            await wait(150);
+            const sceneLayoutStaysOpenAfterNext =
+              Boolean(document.querySelector(".scene-preview-modal")) &&
+              document.querySelector(".scene-layout-scene-position")?.textContent.trim() === "2 / 2";
             const layoutTitleInput = document.querySelector(".scene-preview-title-input");
             if (layoutTitleInput) setNativeValue(layoutTitleInput, "Smoke Layout Title");
             clickButton("Close");
             await wait(100);
-            const aiAssistantClicked = clickButton("AI Assistant");
+            clickButton("Menu");
+            await wait(50);
+            const aiAssistantClicked = clickButton("Image Studio");
             await wait(150);
+            const imageStudioLauncherClicked = clickButton("Open Image Studio");
+            await wait(200);
+            const imageStudioOpened = Boolean(document.querySelector(".ai-image-studio-modal"));
+            const imageVariantCount = document.querySelectorAll(".ai-image-variant-card").length;
+            const animateButton = [...document.querySelectorAll(".ai-image-studio-modal button")]
+              .find((button) => button.textContent.trim() === "Animate");
+            if (animateButton instanceof HTMLButtonElement) animateButton.click();
+            await wait(150);
+            const proceduralAnimationOpened = Boolean(document.querySelector(".image-animation-modal"));
+            const proceduralPresetCount = document.querySelectorAll(
+              '.image-animation-modal label:first-of-type option'
+            ).length;
+            const applyAnimationButton = [...document.querySelectorAll(".image-animation-modal button")]
+              .find((button) => button.textContent.trim() === "Apply");
+            if (applyAnimationButton instanceof HTMLButtonElement) applyAnimationButton.click();
+            await wait(150);
+            const showOriginalButton = [...document.querySelectorAll(".ai-image-studio-modal button")]
+              .find((button) => button.textContent.trim() === "Show Original");
+            if (showOriginalButton instanceof HTMLButtonElement) showOriginalButton.click();
+            await wait(100);
+            const useAnimationButton = [...document.querySelectorAll(".ai-image-studio-modal button")]
+              .find((button) => button.textContent.trim() === "Use Animation");
+            if (useAnimationButton instanceof HTMLButtonElement) useAnimationButton.click();
+            await wait(100);
+            const animationCanBeRestored = [...document.querySelectorAll(".ai-image-studio-modal button")]
+              .some((button) => button.textContent.trim() === "Show Original");
+            const generationQualitySelect = findFieldByLabel("Generation quality", "select");
+            const animateWithAIButton = [...document.querySelectorAll(".ai-image-studio-modal button")]
+              .find((button) => button.textContent.trim() === "Animate with AI");
+            if (animateWithAIButton instanceof HTMLButtonElement) animateWithAIButton.click();
+            await wait(150);
+            const aiFrameEditorOpened = Boolean(document.querySelector(".image-animation-modal"));
+            const frameCountRange = findFieldByLabel("Number of Frames", 'input[type="range"]');
+            const aiFrameLimitIsTwelve =
+              frameCountRange instanceof HTMLInputElement && frameCountRange.max === "12";
+            const cancelAnimationButton = [...document.querySelectorAll(".image-animation-modal button")]
+              .find((button) => button.textContent.trim() === "Cancel");
+            if (cancelAnimationButton instanceof HTMLButtonElement) cancelAnimationButton.click();
+            await wait(50);
             const aiApiKeyInput = findFieldByLabel("API key", "input");
             const aiModelInput = findFieldByLabel("Model", "input");
             const aiPanel = document.querySelector(".ai-drawer, .ai-assistant-modal");
@@ -121,13 +260,29 @@ function createWindow() {
               hasCanvas: Boolean(document.querySelector(".react-flow")),
               hasSceneNode: text.includes("Scene 1"),
               hasStoryLifeBridge: Boolean(window.storyLife),
+              canLoadStreamingMedia: streamingMediaBytes > 0,
+              canLoadStreamingMediaRange:
+                streamingRangeResponse?.status === 206 && streamingRangeBytes === 32,
+              inspectorMenusInitiallyCollapsed,
+              canOpenSceneMediaMenu: sceneMediaMenuClicked && canOpenSceneMediaMenu,
               canTypeSceneTitle: titleInput && titleInput.value === "Smoke Scene Title",
               canTypeSceneText: sceneTextArea && sceneTextArea.value === "Smoke scene text typed into inspector.",
               canAddChoice: addChoiceClicked && Boolean(choiceInput),
               canTypeChoiceText: choiceInput && choiceInput.value === "Smoke choice text",
-              canOpenSceneLayout: sceneLayoutClicked && Boolean(document.querySelector(".scene-preview-modal")),
+              canOpenSceneLayout: sceneLayoutClicked && sceneLayoutOpened,
+              nativeChoiceFrameWorks,
+              sceneLayoutStaysOpenAfterNext,
               canTypeSceneLayoutTitle: layoutTitleInput && layoutTitleInput.value === "Smoke Layout Title",
               canOpenAIAssistant: aiAssistantClicked && Boolean(document.querySelector(".ai-drawer, .ai-assistant-modal")),
+              canOpenImageStudio: imageStudioLauncherClicked && imageStudioOpened,
+              imageVariantHistoryWorks: imageVariantCount >= 1,
+              proceduralAnimationEditorWorks:
+                proceduralAnimationOpened && proceduralPresetCount >= 15,
+              animationCanBeRestored,
+              aiFrameEditorWorks: aiFrameEditorOpened && aiFrameLimitIsTwelve,
+              generationQualityDefaultsLow:
+                generationQualitySelect instanceof HTMLSelectElement &&
+                generationQualitySelect.value === "low",
               canTypeAIApiKey: aiApiKeyInput && aiApiKeyInput.value === "smoke-api-key",
               canTypeAIModel: aiModelInput && aiModelInput.value === "gpt-5.4",
               canTypeAIChat: aiChatInput && aiChatInput.value === "Smoke AI chat input",
@@ -152,7 +307,57 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  desktopMediaCacheRoot = join(app.getPath("userData"), "media-cache");
+  await mkdir(desktopMediaCacheRoot, { recursive: true });
+
+  protocol.handle(LOCAL_MEDIA_SCHEME, async (request) => {
+    const sourcePath = getLocalMediaPathFromUrl(request.url);
+    if (!sourcePath || !isSupportedLocalMediaExtension(extname(sourcePath))) {
+      return new Response("Media file not found", { status: 404 });
+    }
+
+    try {
+      const fileStats = await stat(sourcePath);
+      if (!fileStats.isFile()) {
+        return new Response("Media file not found", { status: 404 });
+      }
+
+      const rangeHeader = request.headers.get("range");
+      const byteRange = rangeHeader
+        ? parseSingleByteRange(rangeHeader, fileStats.size)
+        : null;
+      if (rangeHeader && !byteRange) {
+        return new Response(null, {
+          status: 416,
+          headers: { "Content-Range": `bytes */${fileStats.size}` }
+        });
+      }
+
+      const start = byteRange?.start ?? 0;
+      const end = byteRange?.end ?? Math.max(0, fileStats.size - 1);
+      const contentLength = fileStats.size === 0 ? 0 : end - start + 1;
+      const headers = new Headers({
+        "Accept-Ranges": "bytes",
+        "Content-Length": String(contentLength),
+        "Content-Type": getLocalMediaMimeType(extname(sourcePath))
+      });
+      if (byteRange) {
+        headers.set("Content-Range", `bytes ${start}-${end}/${fileStats.size}`);
+      }
+      if (request.method === "HEAD" || fileStats.size === 0) {
+        return new Response(null, { status: byteRange ? 206 : 200, headers });
+      }
+
+      const nodeStream = createReadStream(sourcePath, { start, end });
+      return new Response(Readable.toWeb(nodeStream) as ReadableStream, {
+        status: byteRange ? 206 : 200,
+        headers
+      });
+    } catch {
+      return new Response("Media file not found", { status: 404 });
+    }
+  });
   createWindow();
 
   app.on("activate", () => {
@@ -168,19 +373,68 @@ app.on("window-all-closed", () => {
   }
 });
 
-ipcMain.handle("project:save", async (_event, projectJson: string) => {
-  const result = await dialog.showSaveDialog({
-    title: "Save StoryLife Project",
-    defaultPath: "StoryLife Project.storylife",
-    filters: [{ name: "Portable StoryLife Project", extensions: ["storylife"] }]
-  });
+app.on("before-quit", () => {
+  isApplicationQuitting = true;
+});
 
-  if (result.canceled || !result.filePath) {
-    return { canceled: true as const };
+ipcMain.handle("app:confirmClose", (event) => {
+  const parentWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!parentWindow) {
+    return { ok: false as const };
+  }
+  for (const window of BrowserWindow.getAllWindows()) {
+    closeApprovedWindowIds.add(window.id);
+  }
+  setImmediate(() => {
+    isApplicationQuitting = true;
+    app.quit();
+  });
+  return { ok: true as const };
+});
+
+ipcMain.handle("project:save", async (
+  event,
+  projectJson: string,
+  options?: { filePath?: string; suggestedName?: string; saveAs?: boolean }
+) => {
+  const parentWindow = BrowserWindow.fromWebContents(event.sender);
+  let filePath = options?.saveAs ? "" : options?.filePath?.trim() ?? "";
+
+  if (!filePath) {
+    const dialogOptions = {
+      title: options?.saveAs ? "Save StoryLife Project As" : "Save StoryLife Project",
+      defaultPath:
+        options?.filePath?.trim() ||
+        options?.suggestedName?.trim() ||
+        "StoryLife Project.storylife",
+      filters: [{ name: "Portable StoryLife Project", extensions: ["storylife"] }]
+    };
+    const result = parentWindow
+      ? await dialog.showSaveDialog(parentWindow, dialogOptions)
+      : await dialog.showSaveDialog(dialogOptions);
+
+    if (result.canceled || !result.filePath) {
+      return { canceled: true as const };
+    }
+    filePath = result.filePath;
   }
 
-  await writeFile(result.filePath, await createStoryLifeArchive(projectJson));
-  return { canceled: false as const, filePath: result.filePath };
+  const archiveBuffer = await createStoryLifeArchive(projectJson);
+  await readStoryLifeArchive(archiveBuffer);
+  await writeFile(filePath, archiveBuffer);
+  const persistedBuffer = await readFile(filePath);
+  const expectedHash = createHash("sha256").update(archiveBuffer).digest("hex");
+  const persistedHash = createHash("sha256").update(persistedBuffer).digest("hex");
+  if (expectedHash !== persistedHash) {
+    throw new Error("Project save verification failed. The written file does not match the project archive.");
+  }
+  await readStoryLifeArchive(persistedBuffer);
+  return {
+    canceled: false as const,
+    filePath,
+    verified: true as const,
+    byteSize: persistedBuffer.length
+  };
 });
 
 ipcMain.handle("project:load", async () => {
@@ -199,19 +453,35 @@ ipcMain.handle("project:load", async () => {
 
   const filePath = result.filePaths[0];
   const fileBuffer = await readFile(filePath);
-  const contents = isStoryLifeArchive(fileBuffer)
-    ? await readStoryLifeArchive(fileBuffer)
+  const archiveCacheKey = createHash("sha256")
+    .update(fileBuffer)
+    .digest("hex")
+    .slice(0, 24);
+  const portableArchive = isStoryLifeArchive(fileBuffer);
+  const contents = portableArchive
+    ? await readStoryLifeArchive(
+        fileBuffer,
+        join(desktopMediaCacheRoot, archiveCacheKey)
+      )
     : fileBuffer.toString("utf-8");
-  return { canceled: false as const, filePath, contents };
+  return {
+    canceled: false as const,
+    filePath,
+    contents,
+    canOverwrite: portableArchive
+  };
 });
 
 ipcMain.handle("image:select", async (event) => {
   const parentWindow = BrowserWindow.fromWebContents(event.sender);
   const options: OpenDialogOptions = {
-    title: "Select Scene Image",
+    title: "Select Scene Picture or Video",
     properties: ["openFile"],
     filters: [
-      { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }
+      {
+        name: "Pictures and videos",
+        extensions: ["png", "jpg", "jpeg", "webp", "gif", "mp4", "webm", "mov", "m4v"]
+      }
     ]
   };
   const result = parentWindow
@@ -222,7 +492,12 @@ ipcMain.handle("image:select", async (event) => {
     return { canceled: true as const };
   }
 
-  return { canceled: false as const, filePath: result.filePaths[0] };
+  const filePath = result.filePaths[0];
+  return {
+    canceled: false as const,
+    filePath,
+    mediaType: isVideoExtension(extname(filePath)) ? "video" as const : "image" as const
+  };
 });
 
 ipcMain.handle("image:preview", async (_event, imagePath: string) => {
@@ -232,7 +507,7 @@ ipcMain.handle("image:preview", async (_event, imagePath: string) => {
   }
 
   const extension = extname(sourcePath).toLowerCase();
-  if (![".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(extension)) {
+  if (!isPictureExtension(extension) && !isVideoExtension(extension)) {
     return { ok: false as const };
   }
 
@@ -240,7 +515,7 @@ ipcMain.handle("image:preview", async (_event, imagePath: string) => {
     const imageBuffer = await readFile(sourcePath);
     return {
       ok: true as const,
-      dataUrl: `data:${getImageMimeType(extension)};base64,${imageBuffer.toString(
+      dataUrl: `data:${getVisualMediaMimeType(extension)};base64,${imageBuffer.toString(
         "base64"
       )}`
     };
@@ -248,6 +523,31 @@ ipcMain.handle("image:preview", async (_event, imagePath: string) => {
     return { ok: false as const };
   }
 });
+
+ipcMain.handle(
+  "image:saveCopy",
+  async (event, imagePath: string, suggestedName: string) => {
+    const picture = await readPictureForSaving(imagePath);
+    const extension = getImageExtension(picture.mimeType);
+    const safeBaseName = sanitizeFileName(
+      basename(suggestedName, extname(suggestedName)) || "scene-picture"
+    );
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: "Save Picture",
+      defaultPath: `${safeBaseName}${extension}`,
+      filters: [{ name: "Picture", extensions: [extension.slice(1)] }]
+    };
+    const result = parentWindow
+      ? await dialog.showSaveDialog(parentWindow, options)
+      : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) {
+      return { canceled: true as const };
+    }
+    await writeFile(result.filePath, picture.buffer);
+    return { canceled: false as const, filePath: result.filePath };
+  }
+);
 
 ipcMain.handle("audio:select", async (event) => {
   const parentWindow = BrowserWindow.fromWebContents(event.sender);
@@ -578,8 +878,8 @@ ipcMain.handle(
       const answer = await callOpenAIText({
         systemPrompt: createLeanStoryArchitectureSystemPrompt(),
         userPrompt: [
-          "Design the compact master architecture for this interactive text quest.",
-          `The finished project will contain exactly ${payload.targetSceneCount} scenes. Create exactly that many compact semantic scene contracts in scenePlan.`,
+          "Write a compact creative map for this interactive text quest.",
+          `Aim for ${payload.targetSceneCount} ordered story beats. The Builder, not you, owns the final scene count and link graph.`,
           "",
           "ORIGINAL STORY REQUEST:",
           payload.storyText,
@@ -593,8 +893,10 @@ ipcMain.handle(
           "RECENT DISCUSSION:",
           formatAIChatHistory(payload.chatHistory),
           "",
-          "PROBLEMS FROM A PREVIOUS COMPLETE BLUEPRINT, IF THIS IS A REPLAN:",
+          "ONLY FIX THESE JSON OR MAP READABILITY PROBLEMS FROM THE PREVIOUS ATTEMPT:",
           payload.correctionProblems?.map((problem) => `- ${problem}`).join("\n") || "none",
+          "",
+          CAPY_3_STORY_REFERENCE,
           "",
           "Return the architecture JSON now."
         ].join("\n"),
@@ -649,6 +951,8 @@ ipcMain.handle(
           "",
           "MASTER STORY ARCHITECTURE:",
           payload.architectureJson,
+          "",
+          CAPY_3_STORY_REFERENCE,
           "",
           "ALREADY APPROVED BLUEPRINT SCENES. Preserve them and continue their exact branches:",
           payload.approvedBlueprintJson,
@@ -1162,25 +1466,28 @@ ipcMain.handle(
   async (
     _event,
     payload: {
-      sceneJson: string;
       prompt: string;
       referenceImagePaths?: string[];
       imageModel?: string;
       imageSize?: string;
+      imageQuality?: string;
+      preserveReferenceCanvas?: boolean;
+      requestId?: string;
     }
   ) => {
-    const abortController = new AbortController();
+    const abortController = createAIAbortController(payload.requestId);
     const timeoutId = setTimeout(() => {
       abortController.abort();
     }, 180000);
 
     try {
       const filePath = await callOpenAIImage({
-        sceneJson: payload.sceneJson,
         prompt: payload.prompt,
         referenceImagePaths: payload.referenceImagePaths,
         imageModel: payload.imageModel,
         imageSize: payload.imageSize,
+        imageQuality: payload.imageQuality,
+        preserveReferenceCanvas: payload.preserveReferenceCanvas,
         signal: abortController.signal
       });
 
@@ -1194,6 +1501,7 @@ ipcMain.handle(
       throw error;
     } finally {
       clearTimeout(timeoutId);
+      cleanupAIAbortController(payload.requestId);
     }
   }
 );
@@ -1261,6 +1569,28 @@ interface ExportScene {
   title: string;
   text: string;
   imagePath: string;
+  visualMediaType?: "image" | "video";
+  videoLoop?: boolean;
+  activeImageVariantId?: string;
+  imageVariants?: Array<{
+    id: string;
+    imagePath: string;
+    name?: string;
+    prompt?: string;
+    createdAt?: number;
+    animation?: {
+      type: "procedural" | "aiFrames";
+      enabled?: boolean;
+      sourceImagePath?: string;
+      frames?: Array<{
+        id: string;
+        source: "original" | "generated";
+        imagePath: string;
+        instruction?: string;
+      }>;
+      [key: string]: unknown;
+    } | null;
+  }>;
   soundPath?: string;
   layoutType?: string;
   fadeMusicOnSceneSound?: boolean;
@@ -1294,15 +1624,25 @@ async function prepareExportProject(
   exportPath: string
 ): Promise<ExportProject> {
   await mkdir(join(exportPath, "assets", "images"), { recursive: true });
+  await mkdir(join(exportPath, "assets", "video"), { recursive: true });
   await mkdir(join(exportPath, "assets", "audio"), { recursive: true });
 
   const scenes = await Promise.all(
     project.scenes.map(async (scene) => {
-      const imagePath = await copySceneImage(scene, exportPath);
+      const sourceImagePath = scene.imagePath;
+      const imagePath = await copySceneVisual(scene, exportPath);
+      const imageVariant = await prepareExportImageVariant(
+        scene,
+        sourceImagePath,
+        imagePath,
+        exportPath
+      );
       const soundPath = await copyAudioFile(scene.soundPath ?? "", scene.id, exportPath);
       return {
         ...scene,
         imagePath,
+        imageVariants: imageVariant ? [imageVariant] : [],
+        activeImageVariantId: imageVariant?.id ?? "",
         soundPath,
         authorNotes: undefined
       };
@@ -1330,7 +1670,66 @@ async function prepareExportProject(
   };
 }
 
-async function copySceneImage(
+async function prepareExportImageVariant(
+  scene: ExportScene,
+  sourceImagePath: string,
+  exportedImagePath: string,
+  exportPath: string
+): Promise<NonNullable<ExportScene["imageVariants"]>[number] | null> {
+  const variant = scene.imageVariants?.find(
+    (candidate) => candidate.id === scene.activeImageVariantId
+  ) ?? scene.imageVariants?.find((candidate) => candidate.imagePath === sourceImagePath);
+  if (!variant || !exportedImagePath) return null;
+  if (!variant.animation?.enabled) {
+    return { ...variant, imagePath: exportedImagePath, animation: null };
+  }
+  if (variant.animation.type !== "aiFrames") {
+    return {
+      ...variant,
+      imagePath: exportedImagePath,
+      animation: { ...variant.animation, sourceImagePath: exportedImagePath }
+    };
+  }
+  const frames = await Promise.all((variant.animation.frames ?? []).map(async (frame, index) => ({
+    ...frame,
+    imagePath: frame.source === "original"
+      ? ""
+      : await copyAnimationFrame(frame.imagePath, `${scene.id}_${index + 1}`, exportPath)
+  })));
+  return {
+    ...variant,
+    imagePath: exportedImagePath,
+    animation: {
+      ...variant.animation,
+      sourceImagePath: exportedImagePath,
+      frames: frames.filter((frame) => frame.source === "original" || frame.imagePath)
+    }
+  };
+}
+
+async function copyAnimationFrame(
+  framePath: string,
+  id: string,
+  exportPath: string
+): Promise<string> {
+  const sourcePath = normalizeLocalImagePath(framePath);
+  if (!sourcePath) return "";
+  const dataFile = sourcePath.startsWith("data:image/") ? parseDataUrl(sourcePath) : null;
+  if (dataFile) {
+    const extension = getImageExtension(dataFile.mimeType);
+    const relativePath = `assets/images/${sanitizeFileName(id)}${extension}`;
+    await writeFile(join(exportPath, relativePath), dataFile.buffer);
+    return relativePath;
+  }
+  try { await access(sourcePath); } catch { return ""; }
+  const extension = extname(sourcePath).toLowerCase();
+  if (!isPictureExtension(extension)) return "";
+  const relativePath = `assets/images/${sanitizeFileName(id)}${extension}`;
+  await copyFile(sourcePath, join(exportPath, relativePath));
+  return relativePath;
+}
+
+async function copySceneVisual(
   scene: ExportScene,
   exportPath: string
 ): Promise<string> {
@@ -1339,15 +1738,18 @@ async function copySceneImage(
     return "";
   }
 
-  if (sourcePath.startsWith("data:image/")) {
+  if (sourcePath.startsWith("data:image/") || sourcePath.startsWith("data:video/")) {
     const dataFile = parseDataUrl(sourcePath);
     if (!dataFile) {
       return "";
     }
 
-    const extension = getImageExtension(dataFile.mimeType);
+    const isVideo = dataFile.mimeType.startsWith("video/");
+    const extension = isVideo
+      ? getVideoExtension(dataFile.mimeType)
+      : getImageExtension(dataFile.mimeType);
     const fileName = `${sanitizeFileName(scene.id)}${extension}`;
-    const relativePath = `assets/images/${fileName}`;
+    const relativePath = `assets/${isVideo ? "video" : "images"}/${fileName}`;
     await writeFile(join(exportPath, relativePath), dataFile.buffer);
     return relativePath;
   }
@@ -1359,12 +1761,12 @@ async function copySceneImage(
   }
 
   const extension = extname(sourcePath).toLowerCase();
-  if (![".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(extension)) {
+  if (!isPictureExtension(extension) && !isVideoExtension(extension)) {
     return "";
   }
 
   const fileName = `${sanitizeFileName(scene.id)}${extension}`;
-  const relativePath = `assets/images/${fileName}`;
+  const relativePath = `assets/${isVideoExtension(extension) ? "video" : "images"}/${fileName}`;
   await copyFile(sourcePath, join(exportPath, relativePath));
   return relativePath;
 }
@@ -1413,17 +1815,107 @@ function normalizeLocalImagePath(imagePath: string): string {
   return normalizeLocalFilePath(imagePath);
 }
 
-function getImageMimeType(extension: string): string {
-  if (extension === ".jpg" || extension === ".jpeg") {
+function getLocalMediaPathFromUrl(mediaUrl: string): string {
+  try {
+    const parsedUrl = new URL(mediaUrl);
+    if (parsedUrl.protocol !== `${LOCAL_MEDIA_SCHEME}:` || parsedUrl.hostname !== "local") {
+      return "";
+    }
+    return normalizeLocalFilePath(decodeURIComponent(parsedUrl.pathname.slice(1)));
+  } catch {
+    return "";
+  }
+}
+
+function isSupportedLocalMediaExtension(extension: string): boolean {
+  const normalizedExtension = extension.toLowerCase();
+  return (
+    isPictureExtension(normalizedExtension) ||
+    isVideoExtension(normalizedExtension) ||
+    [".mp3", ".wav", ".ogg", ".m4a"].includes(normalizedExtension)
+  );
+}
+
+function parseSingleByteRange(
+  rangeHeader: string,
+  fileSize: number
+): { start: number; end: number } | null {
+  if (fileSize <= 0) {
+    return null;
+  }
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim());
+  if (!match || (!match[1] && !match[2])) {
+    return null;
+  }
+
+  if (!match[1]) {
+    const suffixLength = Number(match[2]);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return null;
+    return {
+      start: Math.max(0, fileSize - suffixLength),
+      end: fileSize - 1
+    };
+  }
+
+  const start = Number(match[1]);
+  const requestedEnd = match[2] ? Number(match[2]) : fileSize - 1;
+  if (
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(requestedEnd) ||
+    start < 0 ||
+    start >= fileSize ||
+    requestedEnd < start
+  ) {
+    return null;
+  }
+  return { start, end: Math.min(requestedEnd, fileSize - 1) };
+}
+
+function getLocalMediaMimeType(extension: string): string {
+  const normalizedExtension = extension.toLowerCase();
+  if (isPictureExtension(normalizedExtension) || isVideoExtension(normalizedExtension)) {
+    return getVisualMediaMimeType(normalizedExtension);
+  }
+  if (normalizedExtension === ".mp3") return "audio/mpeg";
+  if (normalizedExtension === ".wav") return "audio/wav";
+  if (normalizedExtension === ".ogg") return "audio/ogg";
+  if (normalizedExtension === ".m4a") return "audio/mp4";
+  return "application/octet-stream";
+}
+
+function getVisualMediaMimeType(extension: string): string {
+  const normalizedExtension = extension.toLowerCase();
+  if (normalizedExtension === ".mp4" || normalizedExtension === ".m4v") {
+    return "video/mp4";
+  }
+  if (normalizedExtension === ".webm") {
+    return "video/webm";
+  }
+  if (normalizedExtension === ".mov") {
+    return "video/quicktime";
+  }
+  if (normalizedExtension === ".jpg" || normalizedExtension === ".jpeg") {
     return "image/jpeg";
   }
-  if (extension === ".webp") {
+  if (normalizedExtension === ".webp") {
     return "image/webp";
   }
-  if (extension === ".gif") {
+  if (normalizedExtension === ".gif") {
     return "image/gif";
   }
   return "image/png";
+}
+
+function getImageMimeType(extension: string): string {
+  return getVisualMediaMimeType(extension);
+}
+
+function isPictureExtension(extension: string): boolean {
+  return [".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(extension.toLowerCase());
+}
+
+function isVideoExtension(extension: string): boolean {
+  return [".mp4", ".webm", ".mov", ".m4v"].includes(extension.toLowerCase());
 }
 
 function getImageExtension(mimeType: string): string {
@@ -1437,6 +1929,44 @@ function getImageExtension(mimeType: string): string {
     return ".gif";
   }
   return ".png";
+}
+
+function getVideoExtension(mimeType: string): string {
+  if (mimeType === "video/webm") return ".webm";
+  if (mimeType === "video/quicktime") return ".mov";
+  return ".mp4";
+}
+
+async function readPictureForSaving(
+  imagePath: string
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const dataFile = parseDataUrl(imagePath);
+  if (dataFile) {
+    if (!dataFile.mimeType.startsWith("image/")) {
+      throw new Error("Only pictures can be saved with Save Picture.");
+    }
+    return dataFile;
+  }
+
+  if (/^https?:/i.test(imagePath)) {
+    const response = await fetch(imagePath);
+    if (!response.ok) throw new Error("Could not download this picture.");
+    const mimeType = response.headers.get("content-type")?.split(";")[0] || "image/png";
+    if (!mimeType.startsWith("image/")) {
+      throw new Error("The selected media is not a picture.");
+    }
+    return { buffer: Buffer.from(await response.arrayBuffer()), mimeType };
+  }
+
+  const filePath = normalizeLocalFilePath(imagePath);
+  const extension = extname(filePath).toLowerCase();
+  if (!isPictureExtension(extension)) {
+    throw new Error("The selected media is not a supported picture.");
+  }
+  return {
+    buffer: await readFile(filePath),
+    mimeType: getVisualMediaMimeType(extension)
+  };
 }
 
 function getAudioExtension(mimeType: string): string {
@@ -1490,7 +2020,7 @@ async function scanMediaFolder(folderPath: string) {
     id: string;
     name: string;
     path: string;
-    type: "image" | "audio";
+    type: "image" | "video" | "audio";
   }> = [];
 
   async function walk(currentPath: string, depth: number) {
@@ -1513,9 +2043,11 @@ async function scanMediaFolder(folderPath: string) {
       const extension = extname(entry.name).toLowerCase();
       const type = [".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(extension)
         ? "image"
-        : [".mp3", ".wav", ".ogg", ".m4a", ".webm"].includes(extension)
-          ? "audio"
-          : null;
+        : [".mp4", ".webm", ".mov", ".m4v"].includes(extension)
+          ? "video"
+          : [".mp3", ".wav", ".ogg", ".m4a"].includes(extension)
+            ? "audio"
+            : null;
 
       if (type) {
         assets.push({
@@ -1795,6 +2327,7 @@ function createExportHtml(): string {
           transform 160ms ease;
       }
       .exact-play-choice-button:not(:disabled) { cursor: pointer; }
+      .choice-text-inner { display:block; transform-origin:center; pointer-events:none; }
       .exact-play-choice-button:not(:disabled):hover {
         border-color: rgba(56, 79, 73, 0.56);
         box-shadow: 0 13px 26px rgba(56, 79, 73, 0.14);
@@ -1916,10 +2449,17 @@ function createExportHtml(): string {
           button.className = item.available
             ? "choice-preview-input exact-play-choice-button"
             : "choice-preview-input exact-play-choice-button locked-choice";
-          button.textContent = (item.available ? "" : "Locked: ") + (item.choice.text || "Continue");
+          const buttonText = document.createElement("span");
+          buttonText.className = "choice-text-inner";
+          buttonText.textContent = (item.available ? "" : "Locked: ") + (item.choice.text || "");
+          buttonText.setAttribute("style", textContentOffsetStyle(scene, "choices"));
+          button.appendChild(buttonText);
           button.disabled = !item.available;
-          button.style.color = sceneStyle.choicesTextColor || "";
-          button.style.fontSize = Number(sceneStyle.choicesFontSize || 16) + "px";
+            button.style.color = sceneStyle.choicesTextColor || "";
+            button.style.fontSize = Number(sceneStyle.choicesFontSize || 16) + "px";
+            button.style.fontFamily = fontFamily(sceneStyle.choicesFontFamily || "system");
+            if (sceneStyle.choicesBorderEnabled === false) button.style.border = "0";
+            button.style.cssText += choiceFrameStyle(sceneStyle.choicesFrameStyle || "none");
           button.addEventListener("click", () => {
             playChoiceClickSound();
             const nextSceneId = resolveChoiceTarget(item.choice);
@@ -1956,10 +2496,10 @@ function createExportHtml(): string {
       function renderSceneBody(scene, layout, contentClass) {
         const image = scene.imagePath ? '<div class="scene-preview-editable scene-preview-image-editable" style="' + escapeAttribute(imageFrameStyle(scene)) + '"><img class="scene-preview-image" style="' + escapeAttribute(imageStyle(scene)) + '" src="' + escapeAttribute(scene.imagePath) + '" alt="" /></div>' : "";
         const sceneStyle = scene.style || {};
-        const title = '<section class="scene-preview-title-panel scene-preview-editable" style="' + escapeAttribute(titleStyle(scene)) + '"><h1 style="font-size:' + Number(sceneStyle.titleFontSize || 22) + 'px;text-align:' + (sceneStyle.textAlign === "center" ? "center" : "left") + '">' + escapeHtml(scene.title || "Untitled scene") + '</h1></section>';
+        const title = sceneStyle.showSceneTitle === false ? "" : '<section class="scene-preview-title-panel scene-preview-editable" style="' + escapeAttribute(titleStyle(scene)) + '"><h1 style="font-size:' + Number(sceneStyle.titleFontSize || 22) + 'px;text-align:' + (sceneStyle.textAlign === "center" ? "center" : "left") + ';' + escapeAttribute(textContentOffsetStyle(scene, "title")) + '">' + escapeHtml(scene.title || "") + '</h1></section>';
         const textPanelClass = (contentClass ? contentClass + ' ' : '') + 'scene-preview-text-panel scene-preview-editable';
-        const content = '<section class="' + textPanelClass + '" style="' + escapeAttribute(contentStyle(scene)) + '"><p>' + escapeHtml(scene.text || "") + '</p></section>';
-        const captionContent = '<section class="' + textPanelClass + ' caption-content" style="' + escapeAttribute(contentStyle(scene)) + '"><p>' + escapeHtml(scene.text || "") + '</p></section>';
+        const content = '<section class="' + textPanelClass + '" style="' + escapeAttribute(contentStyle(scene)) + '"><p style="' + escapeAttribute(textContentOffsetStyle(scene, "text")) + '">' + escapeHtml(scene.text || "") + '</p></section>';
+        const captionContent = '<section class="' + textPanelClass + ' caption-content" style="' + escapeAttribute(contentStyle(scene)) + '"><p style="' + escapeAttribute(textContentOffsetStyle(scene, "text")) + '">' + escapeHtml(scene.text || "") + '</p></section>';
         if (layout === "textFirst") return title + content + image;
         if (layout === "splitLayout") return image + title + content;
         if (layout === "fullImageMoment") return image + title + captionContent;
@@ -1986,6 +2526,7 @@ function createExportHtml(): string {
         css += style.titlePanelTransparent
           ? ';background:transparent;border-color:transparent;box-shadow:none'
           : ';background:' + (style.titlePanelColor || 'rgba(255,253,248,0.82)') + ';border-color:' + (style.titleBorderColor || 'rgba(164,141,105,0.34)');
+        if (style.titleBorderEnabled === false) css += ';border:0';
         css += ';color:' + (style.titleTextColor || style.textColor || theme.textColor || '#26231f');
         css += ';font-family:' + getFontFamily(style.textFontFamily);
         css += ';text-align:' + (style.textAlign === "center" ? "center" : "left");
@@ -2001,6 +2542,7 @@ function createExportHtml(): string {
         css += style.textPanelTransparent
           ? ';background:transparent;border-color:transparent;box-shadow:none'
           : ';background:' + (style.textPanelColor || 'rgba(255,253,248,0.82)') + ';border-color:' + (style.textBorderColor || 'rgba(164,141,105,0.34)');
+        if (style.textBorderEnabled === false) css += ';border:0';
         css += ';color:' + (style.textColor || theme.textColor || '#26231f');
         css += ';font-family:' + getFontFamily(style.textFontFamily);
         css += ';font-size:' + Number(style.textFontSize || 16) + 'px';
@@ -2016,11 +2558,49 @@ function createExportHtml(): string {
         css += style.choicesPanelTransparent
           ? ';background:transparent;border-color:transparent;box-shadow:none'
           : ';background:' + (style.choicesPanelColor || 'linear-gradient(180deg, #fffaf1, #edf5ef)') + ';border-color:' + (style.choicesBorderColor || 'rgba(128,112,88,0.26)');
+        if (style.choicesBorderEnabled === false) css += ';border:0';
         css += ';color:' + (style.choicesTextColor || '#24231f');
         css += ';font-size:' + Number(style.choicesFontSize || 16) + 'px';
+        css += ';font-family:' + fontFamily(style.choicesFontFamily || 'system');
         if (Number(style.choicesPanelWidth || 0) > 0) css += ';width:' + Number(style.choicesPanelWidth) + 'px';
         if (Number(style.choicesPanelHeight || 0) > 0) css += ';height:' + Number(style.choicesPanelHeight) + 'px';
         return css;
+      }
+
+      function textContentOffsetStyle(scene, target) {
+        const style = scene.style || {};
+        const x = target === "title"
+          ? Number(style.titleTextOffsetX || 0)
+          : target === "text"
+            ? Number(style.sceneTextOffsetX || 0)
+            : Number(style.choiceTextOffsetX || 0);
+        const y = target === "title"
+          ? Number(style.titleTextOffsetY || 0)
+          : target === "text"
+            ? Number(style.sceneTextOffsetY || 0)
+            : Number(style.choiceTextOffsetY || 0);
+        return 'transform:translate(' + x / 3 + 'px,' + y / 3 + 'px)';
+      }
+
+      function choiceFrameStyle(frameId) {
+        const match = String(frameId || '').match(/^crafted_(0[1-9]|1[0-9]|20)$/);
+        if (!match) return '';
+        const palettes = [
+          ['#fff3ce', '#d9b66f', '#8d6425', '14px'], ['#25252a', '#09090b', '#a83246', '8px'],
+          ['#d9efc4', '#618f4e', '#315e35', '18px 8px'], ['#183f82', '#091d48', '#d4ae4e', '12px'],
+          ['#711d2b', '#24070e', '#c65a68', '4px 16px'], ['#f4fbff', '#9fc8df', '#7599b4', '20px 8px'],
+          ['#6b2fb1', '#220844', '#bd80ff', '16px'], ['#9b6335', '#4a2816', '#d09a55', '10px'],
+          ['#a86b2f', '#3d2113', '#d2a15b', '6px 18px'], ['#103447', '#06141e', '#18d9ed', '4px'],
+          ['#ffd9df', '#bd7180', '#9d5060', '22px'], ['#202124', '#070708', '#c7a553', '2px'],
+          ['#ead4a5', '#a9804d', '#79552d', '3px 15px'], ['#d8ffff', '#66aeb5', '#e9ffff', '24px 10px'],
+          ['#68492c', '#261a12', '#60864d', '10px 2px'], ['#173b72', '#070d24', '#e1bd5b', '14px 4px'],
+          ['#a85d37', '#4a2418', '#d1835a', '7px'], ['#b9dfae', '#3f805d', '#c6a65b', '2px 16px'],
+          ['#d58a19', '#5c2c08', '#ffd060', '2px 20px'], ['#f4f1e8', '#b8b4a9', '#36383d', '0 14px']
+        ];
+        const palette = palettes[Number(match[1]) - 1];
+        return ';background:linear-gradient(135deg,' + palette[0] + ',' + palette[1] + ')' +
+          ';border:2px solid ' + palette[2] + ';border-radius:' + palette[3] +
+          ';box-shadow:inset 0 0 0 1px ' + palette[2] + ',0 4px 10px rgba(0,0,0,.22)';
       }
 
       function transformStyle(scene, target) {
@@ -2494,18 +3074,20 @@ function extractOpenAIText(responseJson: OpenAIResponseBody): string {
 }
 
 async function callOpenAIImage({
-  sceneJson,
   prompt,
   referenceImagePaths = [],
   imageModel,
   imageSize,
+  imageQuality,
+  preserveReferenceCanvas = false,
   signal
 }: {
-  sceneJson: string;
   prompt: string;
   referenceImagePaths?: string[];
   imageModel?: string;
   imageSize?: string;
+  imageQuality?: string;
+  preserveReferenceCanvas?: boolean;
   signal?: AbortSignal;
 }): Promise<string> {
   const settings = await readAISettings();
@@ -2518,20 +3100,24 @@ async function callOpenAIImage({
   }
 
   const model = normalizeImageModel(imageModel);
-  const size = normalizeImageSize(imageSize);
+  const size = normalizeImageSize(imageSize, model);
+  const quality = normalizeImageQuality(imageQuality);
+  const referenceRequirement = referenceImagePaths.length > 0
+    ? preserveReferenceCanvas
+      ? "LOCKED CANVAS REQUIREMENT: Treat the attached image as the complete frame to edit. Preserve its exact aspect ratio, orientation, crop boundaries, camera, subject scale, and visible content. Never expand the view or infer missing anatomy. Do not add a face, head, torso, limb, or object that is outside the source crop. Change only the tiny movement explicitly requested."
+      : "IDENTITY REFERENCE REQUIREMENT: The attached images define the character's identity. The generated image must depict the same recognizable character, preserving facial structure, distinctive features, hair or fur pattern, body shape, costume, and key colors. Change only pose, action, camera, lighting, and environment as requested by the prompt. Do not copy text or UI from the references."
+    : "";
   const imagePrompt = [
-    "Scene JSON:",
-    sceneJson,
-    "",
-    "Prompt:",
-    prompt,
-    "",
-    referenceImagePaths.length > 0
-      ? "Use the attached character reference images to preserve character identity, face, costume, and overall look. Do not copy text or UI from references."
-      : ""
+    prompt.trim(),
+    referenceRequirement
   ].join("\n");
 
   const validReferencePaths = await filterReadableImagePaths(referenceImagePaths.slice(0, 3));
+  if (referenceImagePaths.length > 0 && validReferencePaths.length === 0) {
+    throw new Error(
+      "The selected reference images could not be read. Reopen the project or select the reference files again."
+    );
+  }
   const response =
     validReferencePaths.length > 0
       ? await callOpenAIImageEdit({
@@ -2540,6 +3126,7 @@ async function callOpenAIImage({
           prompt: imagePrompt,
           imagePaths: validReferencePaths,
           size,
+          quality,
           signal
         })
       : await callOpenAIImageGeneration({
@@ -2547,6 +3134,7 @@ async function callOpenAIImage({
           model,
           prompt: imagePrompt,
           size,
+          quality,
           signal
         });
 
@@ -2567,17 +3155,23 @@ async function callOpenAIImage({
 
   const imagesDir = join(app.getPath("userData"), "ai-generated-images");
   await mkdir(imagesDir, { recursive: true });
-  const filePath = join(imagesDir, `scene-image-${Date.now()}.png`);
+  const filePath = join(
+    imagesDir,
+    `scene-image-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`
+  );
+  let imageBuffer: Buffer;
   if (imageResult.b64_json) {
-    await writeFile(filePath, Buffer.from(imageResult.b64_json, "base64"));
+    imageBuffer = Buffer.from(imageResult.b64_json, "base64");
   } else if (imageResult.url) {
     const imageResponse = await fetch(imageResult.url, { signal });
     if (!imageResponse.ok) {
       throw new Error(`Could not download generated image: ${imageResponse.status}`);
     }
-    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-    await writeFile(filePath, imageBuffer);
+    imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+  } else {
+    throw new Error("OpenAI returned an empty image result.");
   }
+  await writeFile(filePath, compressGeneratedImage(imageBuffer));
   return filePath;
 }
 
@@ -2586,12 +3180,14 @@ async function callOpenAIImageGeneration({
   model,
   prompt,
   size,
+  quality,
   signal
 }: {
   apiKey: string;
   model: string;
   prompt: string;
   size: string;
+  quality: "low" | "medium" | "high";
   signal?: AbortSignal;
 }): Promise<Response> {
   return fetch("https://api.openai.com/v1/images/generations", {
@@ -2605,7 +3201,7 @@ async function callOpenAIImageGeneration({
       model,
       prompt,
       size,
-      quality: "medium"
+      quality
     })
   });
 }
@@ -2616,6 +3212,7 @@ async function callOpenAIImageEdit({
   prompt,
   imagePaths,
   size,
+  quality,
   signal
 }: {
   apiKey: string;
@@ -2623,19 +3220,22 @@ async function callOpenAIImageEdit({
   prompt: string;
   imagePaths: string[];
   size: string;
+  quality: "low" | "medium" | "high";
   signal?: AbortSignal;
 }): Promise<Response> {
   const formData = new FormData();
   formData.set("model", model);
   formData.set("prompt", prompt);
   formData.set("size", size);
-  formData.set("quality", "medium");
+  formData.set("quality", quality);
 
   for (const imagePath of imagePaths) {
-    const buffer = await readFile(imagePath);
-    const mimeType = getImageMimeType(extname(imagePath).toLowerCase());
+    const dataImage = parseImageDataUrl(imagePath);
+    const buffer = dataImage?.buffer ?? await readFile(imagePath);
+    const mimeType = dataImage?.mimeType ?? getImageMimeType(extname(imagePath).toLowerCase());
+    const fileName = dataImage?.fileName ?? basename(imagePath);
     const blob = new Blob([buffer], { type: mimeType });
-    formData.append("image[]", blob, basename(imagePath));
+    formData.append("image[]", blob, fileName);
   }
 
   return fetch("https://api.openai.com/v1/images/edits", {
@@ -2652,7 +3252,15 @@ async function filterReadableImagePaths(imagePaths: string[]): Promise<string[]>
   const readablePaths: string[] = [];
   for (const imagePath of imagePaths) {
     const normalizedPath = normalizeLocalImagePath(imagePath);
-    if (!normalizedPath || normalizedPath.startsWith("data:")) {
+    if (!normalizedPath) {
+      continue;
+    }
+
+    const dataImage = parseImageDataUrl(normalizedPath);
+    if (normalizedPath.startsWith("data:")) {
+      if (dataImage && dataImage.buffer.length > 0) {
+        readablePaths.push(normalizedPath);
+      }
       continue;
     }
 
@@ -2671,6 +3279,22 @@ async function filterReadableImagePaths(imagePaths: string[]): Promise<string[]>
   return readablePaths;
 }
 
+function parseImageDataUrl(
+  source: string
+): { buffer: Buffer; mimeType: string; fileName: string } | null {
+  const match = source.match(/^data:(image\/(?:png|jpeg|webp));base64,([a-zA-Z0-9+/=\s]+)$/);
+  if (!match) {
+    return null;
+  }
+  const mimeType = match[1].toLowerCase();
+  const extension = mimeType === "image/jpeg" ? "jpg" : mimeType.slice("image/".length);
+  return {
+    buffer: Buffer.from(match[2].replace(/\s/g, ""), "base64"),
+    mimeType,
+    fileName: `reference.${extension}`
+  };
+}
+
 function normalizeImageModel(imageModel: string | undefined): string {
   const model = imageModel?.trim();
   if (
@@ -2685,13 +3309,62 @@ function normalizeImageModel(imageModel: string | undefined): string {
   return "gpt-image-2";
 }
 
-function normalizeImageSize(imageSize: string | undefined): string {
+function normalizeImageSize(imageSize: string | undefined, imageModel: string): string {
   const size = imageSize?.trim();
+  if (size === "auto") return size;
   if (size === "1024x1024" || size === "1024x1536" || size === "1536x1024") {
     return size;
   }
 
+  if (imageModel === "gpt-image-2") {
+    const customSize = size?.match(/^(\d{2,4})x(\d{2,4})$/);
+    if (customSize) {
+      const width = Number(customSize[1]);
+      const height = Number(customSize[2]);
+      const ratio = Math.max(width / height, height / width);
+      const totalPixels = width * height;
+      if (
+        width <= 3840 &&
+        height <= 3840 &&
+        width % 16 === 0 &&
+        height % 16 === 0 &&
+        ratio <= 3 &&
+        totalPixels >= 655_360 &&
+        totalPixels <= 8_294_400
+      ) {
+        return size!;
+      }
+    }
+  }
+
   return "1024x1536";
+}
+
+function normalizeImageQuality(imageQuality: string | undefined): "low" | "medium" | "high" {
+  return imageQuality === "medium" || imageQuality === "high" ? imageQuality : "low";
+}
+
+function compressGeneratedImage(sourceBuffer: Buffer): Buffer {
+  const targetBytes = 600 * 1024;
+  let image = nativeImage.createFromBuffer(sourceBuffer);
+  if (image.isEmpty()) {
+    throw new Error("The generated image could not be decoded for project-friendly compression.");
+  }
+
+  for (let resizePass = 0; resizePass < 7; resizePass += 1) {
+    for (let quality = 86; quality >= 44; quality -= 6) {
+      const jpeg = image.toJPEG(quality);
+      if (jpeg.length <= targetBytes) return jpeg;
+    }
+    const size = image.getSize();
+    if (size.width <= 640 || size.height <= 640) break;
+    image = image.resize({
+      width: Math.max(640, Math.round(size.width * 0.88)),
+      height: Math.max(640, Math.round(size.height * 0.88)),
+      quality: "better"
+    });
+  }
+  return image.toJPEG(42);
 }
 
 async function readImageAsDataUrl(imagePath: string): Promise<string> {
@@ -2849,43 +3522,35 @@ function createLeanStoryPlannerSystemPrompt(): string {
 
 function createLeanStoryArchitectureSystemPrompt(): string {
   return [
-    "You are the lead story architect for a large interactive text quest.",
-    "Return only one raw JSON object. Plan compact scene contracts, not finished scene prose and not technical project JSON.",
-    "Shape: {\"title\":\"\",\"premise\":\"\",\"tone\":\"\",\"centralConflict\":\"\",\"characters\":[{\"key\":\"\",\"role\":\"\",\"knowledge\":\"\"}],\"majorBranches\":[{\"id\":\"\",\"entryChoice\":\"\",\"identity\":\"\",\"allowedCharacters\":[],\"locations\":[],\"escalation\":\"\",\"resolution\":\"\"}],\"scenePlan\":[{\"key\":\"walk_atm_grandpa\",\"branchId\":\"walk_grandpa\",\"purpose\":\"\",\"allowedCharacters\":[],\"location\":\"\",\"sceneType\":\"normal\",\"outgoingTargets\":[\"walk_insult_grandpa\",\"walk_leave_grandpa\"]}],\"sharedPayoffs\":[],\"continuityRules\":[],\"thingsToAvoid\":[]}.",
-    "Follow the user's exact premise, characters, tone, required endings, and previous discussion.",
-    "Design genuinely different major branches with their own characters, causes, escalation, consequences, and fitting resolutions.",
-    "A branch may converge only when the incoming situations are compatible and the earlier consequences have already been shown.",
-    "The scenePlan is the binding story graph. Every normal contract must list at least one later semantic key in outgoingTargets; every ending contract must use sceneType ending and outgoingTargets:[] .",
-    "A normal scene must always give the player an action. Use one outgoing target only for a necessary consequence/transition; include repeated real splits with two or more different targets throughout the story.",
-    "For 8 or more scenes, plan at least two main endings and at least two real branching decisions; for a large story plan roughly one real branching decision per 8 scenes.",
-    "Build several coherent funnels: routes split, remain distinct long enough to show their consequences, then compatible routes may converge toward several main endings. Never make every route collapse into one unavoidable ending.",
-    "scenePlan must contain exactly the requested number of contracts in reading order. Each key must be unique lowercase English letters/numbers/underscores and describe story meaning, for example bus_grandma_refuses_seat. Never use scene numbers.",
-    "Every planned contract must belong to a named branch. Use branchId shared only for a genuinely compatible opening or convergence; incompatible branch characters must never leak across branches.",
-    "Allocate enough narrative room for setup, visible consequences after choices, development, escalation, payoff, and multiple endings without filler loops.",
-    "Do not use flags or parameters. The application will assign technical scene numbers after all prose blocks pass editorial review.",
-    "Keep the architecture concise enough to remain binding memory for every later block."
+    "You are a story architect, not a JSON project builder.",
+    "Return one raw JSON object and nothing else.",
+    "Shape: {\"title\":\"\",\"premise\":\"\",\"tone\":\"\",\"centralConflict\":\"\",\"characters\":[{\"key\":\"\",\"role\":\"\"}],\"scenePlan\":[{\"key\":\"meaningful_event_key\",\"purpose\":\"\",\"allowedCharacters\":[],\"location\":\"\",\"sceneType\":\"normal\",\"outgoingTargets\":[]}],\"continuityRules\":[],\"thingsToAvoid\":[]}.",
+    "Follow the user's premise, tone, characters, requested endings, and recent discussion exactly.",
+    "Create an ordered list of concrete story beats: opening, different route consequences, escalation, payoffs, and distinct endings. Earlier route decisions must change actual events, not merely wording.",
+    "This must be an interactive branching story, never a linear story with decorative buttons.",
+    "Plan different events for different decisions. Compatible routes may converge only after their separate consequences are shown.",
+    "Use short unique lowercase English semantic keys. Do not use technical scene numbers.",
+    "Mark the intended final outcomes with sceneType ending. The Builder will assign the exact graph and final count, so make neighboring beats flexible enough to connect causally without random jumps.",
+    "Do not add flags or parameters. Keep the map concise; finished prose is written later."
   ].join("\n");
 }
 
 function createLeanStoryBlueprintChunkSystemPrompt(): string {
   return [
-    "You are the story writer. Append one small prose block to an already planned interactive text quest.",
+    "You are the only story writer. Write one small block of a planned interactive text quest.",
     "Return only raw JSON: {\"scenes\":[{\"key\":\"walk_atm_grandpa\",\"branchId\":\"walk_grandpa\",\"characters\":[\"erik\",\"grandpa\"],\"location\":\"ATM\",\"title\":\"\",\"purpose\":\"\",\"arrivalReason\":\"\",\"beat\":\"\",\"text\":\"finished scene prose shown to the player\",\"sceneType\":\"normal\",\"choices\":[{\"text\":\"short player action\",\"targetKey\":\"walk_insult_grandpa\",\"immediateConsequence\":\"exact immediate result\"}]}]}.",
-    "Return exactly the required semantic keys in the supplied order. Do not repeat or modify approved earlier scenes and never invent technical scene numbers.",
-    "For each required key, copy branchId and sceneType from its master scenePlan contract and create exactly one choice for each outgoingTargets entry. Never add, remove, or redirect a planned target.",
-    "Every targetKey must be one of the semantic keys in the master architecture and must occur later in its scenePlan.",
-    "Never point backward, create a cycle, use a self-loop, or send a choice back to an earlier conflict.",
-    "Every scene in this block must be reachable from the opening semantic key through approved earlier choices or choices in this block. Do not create detached scenes.",
-    "If this is not the final block, open at least one semantic key from the next block so planning can continue without rewriting earlier scenes.",
-    "Targets may point to not-yet-written future semantic keys. Those links are binding promises that later blocks must fulfill.",
-    "Every normal scene needs at least one concrete player action. Every ending uses sceneType ending and choices:[].",
-    "Choices in one scene must have different immediate targets and visibly different consequences. If there is only one honest continuation, use one choice.",
-    "Continue the exact branchId, location, allowed characters, knowledge, causes, and unresolved consequences from the architecture and approved scenes.",
-    "Choice text is a concise action suitable for a button. Put narration in scene text, never in the choice button.",
-    "text must be polished final story prose, not an outline, note, summary, or instruction.",
-    "Do not merge incompatible branches into generic scenes. Do not introduce random relatives, punishments, locations, or information.",
-    "Do not use flags or parameters. Direct scene links carry the story logic.",
-    "In the final block, close every still-open route with appropriate ending scenes. Before returning, audit semantic keys, reachability, forward-only targets, branch cast, and choice consequences."
+    "Return exactly the requested keys in order and do not rewrite approved scenes.",
+    "Copy branchId, sceneType, and the exact outgoing target keys from the supplied map. The Builder owns those links.",
+    "Write polished scene titles and player-facing prose, not outline notes.",
+    "For every outgoing target write one short player-action button and a different immediate consequence.",
+    "Read each COMPLETE target contract before naming its button. Derive the button action from the target's purpose, location, structuralRole, incomingSources, and causalConstraint; never derive it only from the current scene.",
+    "A mishap, cheating, betrayal, punishment, or chaotic ending requires an explicitly risky or dishonest button. An innocent action such as warming up, listening, helping, or walking calmly can never secretly produce that result.",
+    "The target scene must begin as a logical result of that exact action, including when it is written in a later block.",
+    "Earlier route choices must create visible route-specific events. Do not make all earlier scenes cosmetic preparation for one final good-versus-bad switch.",
+    "When a resolution scene points to one ending and one later resolution scene, write a real consequence now versus a concrete further attempt; do not disguise them as equivalent warm-up actions.",
+    "Do not collapse two choices into the same immediate event. Do not invent extra targets, loops, flags, parameters, characters, or conflicts.",
+    "At a convergence, arrivalReason and scene text must make sense for every incoming route and acknowledge how the player arrived.",
+    "Ending scenes have choices:[]. All other scenes follow the supplied outgoing targets."
   ].join("\n");
 }
 
@@ -2897,6 +3562,8 @@ function createSemanticStoryChunkReviewerSystemPrompt(): string {
     "Fail a button if it contains narration rather than a concise player action, or if the target scene does not visibly begin with the result of that exact action.",
     "Fail branch contamination: characters, relatives, locations, knowledge, punishments, or unresolved events from another branch may not appear unless the architecture explicitly uses a shared convergence scene.",
     "Fail filler choices, duplicate consequences, abrupt jumps, unexplained arrivals, generic punishment scenes, and characters who appear without setup.",
+    "Fail any neutral or innocent button that secretly leads to cheating, betrayal, punishment, chaos, or the opposite moral meaning.",
+    "Fail a block that postpones all meaningful consequences to a final binary choice while earlier branches only change travel or preparation wording.",
     "Fail a supposedly interactive block if normal scenes omit player actions, if planned branches are silently removed, or if different routes are collapsed before their distinct consequences are shown.",
     "Check branchId, characters, location, arrivalReason, scene text, and choices against the master architecture and approved scenes.",
     "Pass only when a human reader can follow why every new scene happened and which earlier player choice caused it.",

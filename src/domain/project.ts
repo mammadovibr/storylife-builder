@@ -14,6 +14,80 @@ export type SceneNodeColor =
   | "purple"
   | "amber"
   | "red";
+export type SceneVisualMediaType = "image" | "video";
+export type ProceduralImageAnimationPreset =
+  | "slowZoomIn"
+  | "slowZoomOut"
+  | "panLeft"
+  | "panRight"
+  | "panUp"
+  | "panDown"
+  | "floating"
+  | "breathing"
+  | "gentleSway"
+  | "nervousShake"
+  | "impactShake"
+  | "drunkSway"
+  | "comicIdle"
+  | "pulse"
+  | "fadePulse";
+export type ImageAnimationDirection = "auto" | "left" | "right" | "up" | "down";
+export type AIImageAnimationMode =
+  | "idle"
+  | "blink"
+  | "talking"
+  | "headMovement"
+  | "breathing"
+  | "nervous"
+  | "angry"
+  | "comicReaction"
+  | "hitReaction"
+  | "custom";
+
+export interface SceneAnimationFrame {
+  id: string;
+  source: "original" | "generated";
+  imagePath: string;
+  instruction: string;
+}
+
+export interface ProceduralSceneImageAnimation {
+  type: "procedural";
+  enabled: boolean;
+  sourceImagePath: string;
+  preset: ProceduralImageAnimationPreset;
+  intensity: number;
+  speed: number;
+  durationSeconds: number;
+  direction: ImageAnimationDirection;
+  loop: boolean;
+}
+
+export interface AIFramesSceneImageAnimation {
+  type: "aiFrames";
+  enabled: boolean;
+  sourceImagePath: string;
+  mode: AIImageAnimationMode;
+  fps: number;
+  loop: boolean;
+  pingPong: boolean;
+  movementIntensity: number;
+  customInstruction: string;
+  frames: SceneAnimationFrame[];
+}
+
+export type SceneImageAnimation =
+  | ProceduralSceneImageAnimation
+  | AIFramesSceneImageAnimation;
+
+export interface SceneImageVariant {
+  id: string;
+  imagePath: string;
+  name: string;
+  prompt: string;
+  createdAt: number;
+  animation: SceneImageAnimation | null;
+}
 export type SceneLayoutType =
   | "imageTop"
   | "imageBackground"
@@ -34,6 +108,32 @@ export const SCENE_LAYOUT_OPTIONS: Array<{
   { value: "fullImageMoment", label: "Full Image Moment" },
   { value: "dialogueStyle", label: "Dialogue Style" },
   { value: "noImage", label: "No Image" }
+];
+
+export type SceneTransition =
+  | "fade"
+  | "zoomIn"
+  | "zoomOut"
+  | "pushLeft"
+  | "pushRight"
+  | "pushUp"
+  | "pushDown"
+  | "pageTurn";
+
+export type SceneTransitionOverride = SceneTransition | "project";
+
+export const SCENE_TRANSITION_OPTIONS: Array<{
+  value: SceneTransition;
+  label: string;
+}> = [
+  { value: "fade", label: "Soft fade" },
+  { value: "zoomIn", label: "Smooth zoom in" },
+  { value: "zoomOut", label: "Smooth zoom out" },
+  { value: "pushLeft", label: "Push from right" },
+  { value: "pushRight", label: "Push from left" },
+  { value: "pushUp", label: "Push from bottom" },
+  { value: "pushDown", label: "Push from top" },
+  { value: "pageTurn", label: "Book page turn" }
 ];
 
 export interface Position {
@@ -64,6 +164,10 @@ export interface Scene {
   title: string;
   text: string;
   imagePath: string;
+  visualMediaType: SceneVisualMediaType;
+  videoLoop: boolean;
+  imageVariants: SceneImageVariant[];
+  activeImageVariantId: string;
   soundPath: string;
   soundVolume: number;
   soundFadeInSeconds: number;
@@ -90,14 +194,18 @@ export interface ProjectAudioSettings {
 export interface ProjectTheme {
   backgroundColor: string;
   textColor: string;
+  sceneTransition: SceneTransition;
 }
 
 export interface SceneStyle {
+  sceneTransition: SceneTransitionOverride;
   backgroundColor: string;
   textColor: string;
   titlePanelColor: string;
   titleBorderColor: string;
   titleTextColor: string;
+  showSceneTitle: boolean;
+  titleBorderEnabled: boolean;
   titlePanelTransparent: boolean;
   titlePanelOpacity: number;
   titlePanelWidth: number;
@@ -106,6 +214,7 @@ export interface SceneStyle {
   titlePaddingSide: number;
   textPanelColor: string;
   textBorderColor: string;
+  textBorderEnabled: boolean;
   textPanelTransparent: boolean;
   textPanelOpacity: number;
   textPanelWidth: number;
@@ -127,26 +236,35 @@ export interface SceneStyle {
   imageCropLeft: number;
   titleOffsetX: number;
   titleOffsetY: number;
+  titleTextOffsetX: number;
+  titleTextOffsetY: number;
   titleScale: number;
   textOffsetX: number;
   textOffsetY: number;
+  sceneTextOffsetX: number;
+  sceneTextOffsetY: number;
   textScale: number;
   choicesOffsetX: number;
   choicesOffsetY: number;
+  choiceTextOffsetX: number;
+  choiceTextOffsetY: number;
   choicesPanelColor: string;
   choicesBorderColor: string;
   choicesTextColor: string;
+  choicesBorderEnabled: boolean;
+  choicesFrameStyle: string;
   choicesPanelTransparent: boolean;
   choicesPanelOpacity: number;
   choicesPaddingTop: number;
   choicesPaddingSide: number;
   choicesFontSize: number;
+  choicesFontFamily: string;
   choicesPanelWidth: number;
   choicesPanelHeight: number;
   choicesScale: number;
 }
 
-export type MediaAssetType = "image" | "audio";
+export type MediaAssetType = "image" | "video" | "audio";
 
 export interface MediaAsset {
   id: string;
@@ -281,6 +399,10 @@ export function createScene(index: number, id = `scene_${index}`): Scene {
     title: `Scene ${index}`,
     text: "",
     imagePath: "",
+    visualMediaType: "image",
+    videoLoop: true,
+    imageVariants: [],
+    activeImageVariantId: "",
     soundPath: "",
     soundVolume: 1,
     soundFadeInSeconds: 0,
@@ -299,13 +421,83 @@ export function createScene(index: number, id = `scene_${index}`): Scene {
   };
 }
 
+export function createSceneImageVariant(
+  imagePath: string,
+  options: {
+    id?: string;
+    name?: string;
+    prompt?: string;
+    createdAt?: number;
+    animation?: SceneImageAnimation | null;
+  } = {}
+): SceneImageVariant {
+  return {
+    id: options.id ?? `image_variant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    imagePath,
+    name: options.name ?? "Image variant",
+    prompt: options.prompt ?? "",
+    createdAt: options.createdAt ?? Date.now(),
+    animation: options.animation ?? null
+  };
+}
+
+export function applySceneVisual(
+  scene: Scene,
+  imagePath: string,
+  visualMediaType: SceneVisualMediaType,
+  variantDetails?: { name?: string; prompt?: string }
+): Scene {
+  if (!imagePath.trim() || visualMediaType === "video") {
+    return {
+      ...scene,
+      imagePath,
+      visualMediaType,
+      activeImageVariantId: ""
+    };
+  }
+
+  const existingVariant = scene.imageVariants.find(
+    (variant) => variant.imagePath === imagePath
+  );
+  const variant = existingVariant ?? createSceneImageVariant(imagePath, variantDetails);
+  return {
+    ...scene,
+    imagePath,
+    visualMediaType: "image",
+    imageVariants: existingVariant
+      ? scene.imageVariants
+      : [...scene.imageVariants, variant],
+    activeImageVariantId: variant.id
+  };
+}
+
+export function activateSceneImageVariant(scene: Scene, variantId: string): Scene {
+  const variant = scene.imageVariants.find((candidate) => candidate.id === variantId);
+  return variant
+    ? {
+        ...scene,
+        imagePath: variant.imagePath,
+        visualMediaType: "image",
+        activeImageVariantId: variant.id
+      }
+    : scene;
+}
+
+export function getActiveSceneImageVariant(scene: Scene): SceneImageVariant | null {
+  return (
+    scene.imageVariants.find((variant) => variant.id === scene.activeImageVariantId) ??
+    scene.imageVariants.find((variant) => variant.imagePath === scene.imagePath) ??
+    null
+  );
+}
+
 export function createChoice(
   targetNodeId: SceneId,
   id = "choice_1"
 ): Choice {
   return {
     id,
-    text: "New choice",
+    text: "",
     targetNodeId,
     useMultipleOutcomes: false,
     outcomes: [createChoiceOutcome(targetNodeId, 100, `outcome_${id}`)],
@@ -445,17 +637,21 @@ export function createDefaultAudioSettings(): ProjectAudioSettings {
 export function createDefaultProjectTheme(): ProjectTheme {
   return {
     backgroundColor: "#eee8dc",
-    textColor: "#26231f"
+    textColor: "#26231f",
+    sceneTransition: "fade"
   };
 }
 
 export function createDefaultSceneStyle(): SceneStyle {
   return {
+    sceneTransition: "project",
     backgroundColor: "",
     textColor: "",
     titlePanelColor: "",
     titleBorderColor: "",
     titleTextColor: "",
+    showSceneTitle: true,
+    titleBorderEnabled: true,
     titlePanelTransparent: false,
     titlePanelOpacity: 0.82,
     titlePanelWidth: 0,
@@ -464,6 +660,7 @@ export function createDefaultSceneStyle(): SceneStyle {
     titlePaddingSide: 10,
     textPanelColor: "",
     textBorderColor: "",
+    textBorderEnabled: true,
     textPanelTransparent: false,
     textPanelOpacity: 0.82,
     textPanelWidth: 0,
@@ -485,20 +682,29 @@ export function createDefaultSceneStyle(): SceneStyle {
     imageCropLeft: 0,
     titleOffsetX: 0,
     titleOffsetY: 0,
+    titleTextOffsetX: 0,
+    titleTextOffsetY: 0,
     titleScale: 1,
     textOffsetX: 0,
     textOffsetY: 0,
+    sceneTextOffsetX: 0,
+    sceneTextOffsetY: 0,
     textScale: 1,
     choicesOffsetX: 0,
     choicesOffsetY: 0,
+    choiceTextOffsetX: 0,
+    choiceTextOffsetY: 0,
     choicesPanelColor: "",
     choicesBorderColor: "",
     choicesTextColor: "",
+    choicesBorderEnabled: true,
+    choicesFrameStyle: "none",
     choicesPanelTransparent: false,
     choicesPanelOpacity: 0.92,
     choicesPaddingTop: 9,
     choicesPaddingSide: 10,
     choicesFontSize: 16,
+    choicesFontFamily: "system",
     choicesPanelWidth: 0,
     choicesPanelHeight: 0,
     choicesScale: 1
@@ -846,7 +1052,8 @@ function validateProjectTheme(rawTheme: unknown): ProjectTheme {
 
   return {
     backgroundColor: readColor(rawTheme.backgroundColor, "#eee8dc"),
-    textColor: readColor(rawTheme.textColor, "#26231f")
+    textColor: readColor(rawTheme.textColor, "#26231f"),
+    sceneTransition: readSceneTransition(rawTheme.sceneTransition)
   };
 }
 
@@ -1001,6 +1208,14 @@ function validateScene(rawScene: unknown): Scene {
     text: rawScene.text,
     imagePath:
       typeof rawScene.imagePath === "string" ? rawScene.imagePath : "",
+    visualMediaType: readSceneVisualMediaType(
+      rawScene.visualMediaType,
+      typeof rawScene.imagePath === "string" ? rawScene.imagePath : ""
+    ),
+    videoLoop:
+      typeof rawScene.videoLoop === "boolean" ? rawScene.videoLoop : true,
+    imageVariants: readSceneImageVariants(rawScene, rawScene.id),
+    activeImageVariantId: readActiveImageVariantId(rawScene, rawScene.id),
     soundPath:
       typeof rawScene.soundPath === "string" ? rawScene.soundPath : "",
     soundVolume: clampNumber(readNumber(rawScene.soundVolume, 1), 0, 1),
@@ -1029,6 +1244,126 @@ function validateScene(rawScene: unknown): Scene {
       y: rawScene.position.y
     },
     choices: rawScene.choices.map(validateChoice)
+  };
+}
+
+function readSceneImageVariants(rawScene: Record<string, unknown>, sceneId: string): SceneImageVariant[] {
+  const variants = Array.isArray(rawScene.imageVariants)
+    ? rawScene.imageVariants
+        .map((rawVariant, index) => readSceneImageVariant(rawVariant, sceneId, index))
+        .filter((variant): variant is SceneImageVariant => variant !== null)
+    : [];
+  const imagePath = typeof rawScene.imagePath === "string" ? rawScene.imagePath : "";
+  const isImage = readSceneVisualMediaType(rawScene.visualMediaType, imagePath) === "image";
+  if (imagePath.trim() && isImage && !variants.some((variant) => variant.imagePath === imagePath)) {
+    variants.push(createSceneImageVariant(imagePath, {
+      id: `image_variant_${sceneId}_legacy`,
+      name: "Original image",
+      createdAt: 0,
+      animation: readSceneImageAnimation(rawScene.imageAnimation)
+    }));
+  }
+  return variants;
+}
+
+function readActiveImageVariantId(rawScene: Record<string, unknown>, sceneId: string): string {
+  const variants = readSceneImageVariants(rawScene, sceneId);
+  const requestedId = typeof rawScene.activeImageVariantId === "string"
+    ? rawScene.activeImageVariantId
+    : "";
+  if (variants.some((variant) => variant.id === requestedId)) return requestedId;
+  const imagePath = typeof rawScene.imagePath === "string" ? rawScene.imagePath : "";
+  return variants.find((variant) => variant.imagePath === imagePath)?.id ?? "";
+}
+
+function readSceneImageVariant(
+  rawVariant: unknown,
+  sceneId: string,
+  index: number
+): SceneImageVariant | null {
+  if (!isRecord(rawVariant) || typeof rawVariant.imagePath !== "string" || !rawVariant.imagePath.trim()) {
+    return null;
+  }
+  return createSceneImageVariant(rawVariant.imagePath, {
+    id: typeof rawVariant.id === "string" && rawVariant.id.trim()
+      ? rawVariant.id
+      : `image_variant_${sceneId}_${index + 1}`,
+    name: typeof rawVariant.name === "string" ? rawVariant.name : `Image ${index + 1}`,
+    prompt: typeof rawVariant.prompt === "string" ? rawVariant.prompt : "",
+    createdAt: readNumber(rawVariant.createdAt, 0),
+    animation: readSceneImageAnimation(rawVariant.animation)
+  });
+}
+
+function readSceneImageAnimation(rawAnimation: unknown): SceneImageAnimation | null {
+  if (!isRecord(rawAnimation)) return null;
+  const enabled = typeof rawAnimation.enabled === "boolean" ? rawAnimation.enabled : true;
+  const sourceImagePath = typeof rawAnimation.sourceImagePath === "string"
+    ? rawAnimation.sourceImagePath
+    : "";
+  if (rawAnimation.type === "procedural") {
+    const presets: ProceduralImageAnimationPreset[] = [
+      "slowZoomIn", "slowZoomOut", "panLeft", "panRight", "panUp", "panDown",
+      "floating", "breathing", "gentleSway", "nervousShake", "impactShake",
+      "drunkSway", "comicIdle", "pulse", "fadePulse"
+    ];
+    const directions: ImageAnimationDirection[] = ["auto", "left", "right", "up", "down"];
+    return {
+      type: "procedural",
+      enabled,
+      sourceImagePath,
+      preset: presets.includes(rawAnimation.preset as ProceduralImageAnimationPreset)
+        ? rawAnimation.preset as ProceduralImageAnimationPreset
+        : "slowZoomIn",
+      intensity: clampNumber(readNumber(rawAnimation.intensity, 0.35), 0, 1),
+      speed: clampNumber(readNumber(rawAnimation.speed, 1), 0.25, 3),
+      durationSeconds: clampNumber(readNumber(rawAnimation.durationSeconds, 6), 0.4, 30),
+      direction: directions.includes(rawAnimation.direction as ImageAnimationDirection)
+        ? rawAnimation.direction as ImageAnimationDirection
+        : "auto",
+      loop: typeof rawAnimation.loop === "boolean" ? rawAnimation.loop : true
+    };
+  }
+  if (rawAnimation.type !== "aiFrames") return null;
+  const modes: AIImageAnimationMode[] = [
+    "idle", "blink", "talking", "headMovement", "breathing", "nervous",
+    "angry", "comicReaction", "hitReaction", "custom"
+  ];
+  const frames = Array.isArray(rawAnimation.frames)
+    ? rawAnimation.frames.map(readSceneAnimationFrame).filter(
+        (frame): frame is SceneAnimationFrame => frame !== null
+      ).slice(0, 12)
+    : [];
+  return {
+    type: "aiFrames",
+    enabled,
+    sourceImagePath,
+    mode: modes.includes(rawAnimation.mode as AIImageAnimationMode)
+      ? rawAnimation.mode as AIImageAnimationMode
+      : "idle",
+    fps: clampNumber(readNumber(rawAnimation.fps, 6), 1, 24),
+    loop: typeof rawAnimation.loop === "boolean" ? rawAnimation.loop : true,
+    pingPong: typeof rawAnimation.pingPong === "boolean" ? rawAnimation.pingPong : false,
+    movementIntensity: clampNumber(readNumber(rawAnimation.movementIntensity, 0.35), 0, 1),
+    customInstruction: typeof rawAnimation.customInstruction === "string"
+      ? rawAnimation.customInstruction.slice(0, 1000)
+      : "",
+    frames
+  };
+}
+
+function readSceneAnimationFrame(rawFrame: unknown, index: number): SceneAnimationFrame | null {
+  if (!isRecord(rawFrame)) return null;
+  const source = rawFrame.source === "original" ? "original" : "generated";
+  const imagePath = typeof rawFrame.imagePath === "string" ? rawFrame.imagePath : "";
+  if (source === "generated" && !imagePath.trim()) return null;
+  return {
+    id: typeof rawFrame.id === "string" && rawFrame.id.trim()
+      ? rawFrame.id
+      : `animation_frame_${index + 1}`,
+    source,
+    imagePath,
+    instruction: typeof rawFrame.instruction === "string" ? rawFrame.instruction : ""
   };
 }
 
@@ -1081,11 +1416,14 @@ function validateSceneStyle(rawStyle: unknown): SceneStyle {
     clampNumber(readNumber(value, fallbackValue), -2400, 2400);
 
   return {
+    sceneTransition: readSceneTransitionOverride(rawStyle.sceneTransition),
     backgroundColor: readColor(rawStyle.backgroundColor, ""),
     textColor: readColor(rawStyle.textColor, ""),
     titlePanelColor: readColor(rawStyle.titlePanelColor, ""),
     titleBorderColor: readColor(rawStyle.titleBorderColor, ""),
     titleTextColor: readColor(rawStyle.titleTextColor, ""),
+    showSceneTitle: rawStyle.showSceneTitle !== false,
+    titleBorderEnabled: rawStyle.titleBorderEnabled !== false,
     titlePanelTransparent: Boolean(rawStyle.titlePanelTransparent),
     titlePanelOpacity: clampNumber(readNumber(rawStyle.titlePanelOpacity, 0.82), 0, 1),
     titlePanelWidth: clampNumber(readNumber(rawStyle.titlePanelWidth, 0), 0, 390),
@@ -1094,6 +1432,7 @@ function validateSceneStyle(rawStyle: unknown): SceneStyle {
     titlePaddingSide: clampNumber(readNumber(rawStyle.titlePaddingSide, 10), 0, 80),
     textPanelColor: readColor(rawStyle.textPanelColor, ""),
     textBorderColor: readColor(rawStyle.textBorderColor, ""),
+    textBorderEnabled: rawStyle.textBorderEnabled !== false,
     textPanelTransparent: Boolean(rawStyle.textPanelTransparent),
     textPanelOpacity: clampNumber(readNumber(rawStyle.textPanelOpacity, 0.82), 0, 1),
     textPanelWidth: clampNumber(readNumber(rawStyle.textPanelWidth, 0), 0, 390),
@@ -1115,20 +1454,31 @@ function validateSceneStyle(rawStyle: unknown): SceneStyle {
     imageCropLeft: clampNumber(readNumber(rawStyle.imageCropLeft, 0), 0, 90),
     titleOffsetX: readLayoutOffset(rawStyle.titleOffsetX),
     titleOffsetY: readLayoutOffset(rawStyle.titleOffsetY),
+    titleTextOffsetX: readLayoutOffset(rawStyle.titleTextOffsetX),
+    titleTextOffsetY: readLayoutOffset(rawStyle.titleTextOffsetY),
     titleScale: clampNumber(readNumber(rawStyle.titleScale, 1), 0.75, 1.8),
     textOffsetX: readLayoutOffset(rawStyle.textOffsetX),
     textOffsetY: readLayoutOffset(rawStyle.textOffsetY),
+    sceneTextOffsetX: readLayoutOffset(rawStyle.sceneTextOffsetX),
+    sceneTextOffsetY: readLayoutOffset(rawStyle.sceneTextOffsetY),
     textScale: clampNumber(readNumber(rawStyle.textScale, 1), 0.75, 1.8),
     choicesOffsetX: readLayoutOffset(rawStyle.choicesOffsetX),
     choicesOffsetY: readLayoutOffset(rawStyle.choicesOffsetY),
+    choiceTextOffsetX: readLayoutOffset(rawStyle.choiceTextOffsetX),
+    choiceTextOffsetY: readLayoutOffset(rawStyle.choiceTextOffsetY),
     choicesPanelColor: readColor(rawStyle.choicesPanelColor, ""),
     choicesBorderColor: readColor(rawStyle.choicesBorderColor, ""),
     choicesTextColor: readColor(rawStyle.choicesTextColor, ""),
+    choicesBorderEnabled: rawStyle.choicesBorderEnabled !== false,
+    choicesFrameStyle: readChoiceFrameStyle(rawStyle.choicesFrameStyle),
     choicesPanelTransparent: Boolean(rawStyle.choicesPanelTransparent),
     choicesPanelOpacity: clampNumber(readNumber(rawStyle.choicesPanelOpacity, 0.92), 0, 1),
     choicesPaddingTop: clampNumber(readNumber(rawStyle.choicesPaddingTop, 9), 0, 80),
     choicesPaddingSide: clampNumber(readNumber(rawStyle.choicesPaddingSide, 10), 0, 80),
     choicesFontSize: clampNumber(readNumber(rawStyle.choicesFontSize, 16), 11, 26),
+    choicesFontFamily: readTextFontFamily(
+      rawStyle.choicesFontFamily ?? rawStyle.textFontFamily
+    ),
     choicesPanelWidth: clampNumber(readNumber(rawStyle.choicesPanelWidth, 0), 0, 390),
     choicesPanelHeight: clampNumber(readNumber(rawStyle.choicesPanelHeight, 0), 0, 420),
     choicesScale: clampNumber(readNumber(rawStyle.choicesScale, 1), 0.75, 1.35)
@@ -1151,17 +1501,18 @@ function validateChoice(rawChoice: unknown): Choice {
   if (typeof rawChoice.targetNodeId !== "string") {
     throw new Error(`Choice "${rawChoice.id}" targetNodeId is missing.`);
   }
+  const targetNodeId = rawChoice.targetNodeId;
 
   const outcomes = Array.isArray(rawChoice.outcomes)
     ? rawChoice.outcomes.map((outcome, index) =>
-        validateChoiceOutcome(outcome, rawChoice.targetNodeId, index + 1)
+        validateChoiceOutcome(outcome, targetNodeId, index + 1)
       )
-    : [createChoiceOutcome(rawChoice.targetNodeId, 100, `outcome_${rawChoice.id}`)];
+    : [createChoiceOutcome(targetNodeId, 100, `outcome_${rawChoice.id}`)];
 
   return {
     id: rawChoice.id,
     text: rawChoice.text,
-    targetNodeId: rawChoice.targetNodeId,
+    targetNodeId,
     useMultipleOutcomes:
       typeof rawChoice.useMultipleOutcomes === "boolean"
         ? rawChoice.useMultipleOutcomes
@@ -1353,6 +1704,22 @@ function readSceneType(value: unknown): SceneType {
     : "normal";
 }
 
+function readSceneTransition(value: unknown): SceneTransition {
+  return value === "zoomIn" ||
+    value === "zoomOut" ||
+    value === "pushLeft" ||
+    value === "pushRight" ||
+    value === "pushUp" ||
+    value === "pushDown" ||
+    value === "pageTurn"
+    ? value
+    : "fade";
+}
+
+function readSceneTransitionOverride(value: unknown): SceneTransitionOverride {
+  return value === "project" ? "project" : readSceneTransition(value);
+}
+
 function readSceneNodeColor(value: unknown): SceneNodeColor {
   return value === "green" ||
     value === "blue" ||
@@ -1361,6 +1728,21 @@ function readSceneNodeColor(value: unknown): SceneNodeColor {
     value === "red"
     ? value
     : "slate";
+}
+
+function readSceneVisualMediaType(
+  value: unknown,
+  mediaPath: string
+): SceneVisualMediaType {
+  if (value === "video") {
+    return "video";
+  }
+  if (value === "image") {
+    return "image";
+  }
+  return /^(?:data:video\/)|\.(?:mp4|webm|mov|m4v)(?:[?#].*)?$/i.test(mediaPath.trim())
+    ? "video"
+    : "image";
 }
 
 function readSceneLayoutType(value: unknown): SceneLayoutType {
@@ -1378,6 +1760,16 @@ function readTextFontFamily(value: unknown): string {
   return value === "serif" || value === "mono" ? value : "system";
 }
 
+function readChoiceFrameStyle(value: unknown): string {
+  if (typeof value !== "string") return "none";
+  if (/^crafted_(0[1-9]|1[0-9]|20)$/.test(value)) return value;
+  const legacyMatch = value.match(/^ornate_(0[1-9]|[12][0-9]|30)$/);
+  if (!legacyMatch) return "none";
+  const legacyNumber = Number(legacyMatch[1]);
+  const craftedNumber = ((legacyNumber - 1) % 20) + 1;
+  return `crafted_${String(craftedNumber).padStart(2, "0")}`;
+}
+
 function readTextAlign(value: unknown): "left" | "center" {
   return value === "center" ? "center" : "left";
 }
@@ -1391,7 +1783,12 @@ function readColor(value: unknown, fallback: string): string {
     return fallback;
   }
 
-  return /^#[0-9a-fA-F]{6}$/.test(value) || value === "" ? value : fallback;
+  const normalized = value.trim();
+  return (
+    /^#[0-9a-fA-F]{6}$/.test(normalized) ||
+    normalized === "" ||
+    /^linear-gradient\(\s*(?:-?\d+(?:\.\d+)?deg|to\s+(?:top|right|bottom|left)(?:\s+(?:top|right|bottom|left))?)\s*,\s*#[0-9a-fA-F]{6}(?:\s+\d+(?:\.\d+)?%)?\s*,\s*#[0-9a-fA-F]{6}(?:\s+\d+(?:\.\d+)?%)?\s*\)$/i.test(normalized)
+  ) ? normalized : fallback;
 }
 
 function createId(prefix: string): string {

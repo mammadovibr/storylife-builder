@@ -2,15 +2,21 @@ import { contextBridge, ipcRenderer } from "electron";
 
 export type SaveProjectResult =
   | { canceled: true }
-  | { canceled: false; filePath: string };
+  | { canceled: false; filePath: string; verified: true; byteSize: number };
 
 export type LoadProjectResult =
   | { canceled: true }
-  | { canceled: false; filePath: string; contents: string };
+  | { canceled: false; filePath: string; contents: string; canOverwrite: boolean };
+
+export interface SaveProjectOptions {
+  filePath?: string;
+  suggestedName?: string;
+  saveAs?: boolean;
+}
 
 export type SelectImageResult =
   | { canceled: true }
-  | { canceled: false; filePath: string };
+  | { canceled: false; filePath: string; mediaType: "image" | "video" };
 
 export type SelectAudioResult =
   | { canceled: true }
@@ -32,7 +38,7 @@ export type SelectMediaFolderResult =
           id: string;
           name: string;
           path: string;
-          type: "image" | "audio";
+          type: "image" | "video" | "audio";
         }>;
       };
     };
@@ -53,14 +59,30 @@ export type AIProjectResult = { ok: true; projectJson: string };
 export type AIImageResult = { ok: true; filePath: string };
 
 contextBridge.exposeInMainWorld("storyLife", {
-  saveProject: (projectJson: string): Promise<SaveProjectResult> =>
-    ipcRenderer.invoke("project:save", projectJson),
+  confirmClose: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("app:confirmClose"),
+  onCloseRequested: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("app:closeRequested", listener);
+    return () => ipcRenderer.removeListener("app:closeRequested", listener);
+  },
+  saveProject: (
+    projectJson: string,
+    options?: SaveProjectOptions
+  ): Promise<SaveProjectResult> =>
+    ipcRenderer.invoke("project:save", projectJson, options),
   loadProject: (): Promise<LoadProjectResult> =>
     ipcRenderer.invoke("project:load"),
   selectImage: (): Promise<SelectImageResult> =>
     ipcRenderer.invoke("image:select"),
+  getMediaUrl: (mediaPath: string): string =>
+    `storylife-media://local/${encodeURIComponent(mediaPath.trim())}`,
   readImagePreview: (imagePath: string): Promise<ImagePreviewResult> =>
     ipcRenderer.invoke("image:preview", imagePath),
+  savePicture: (
+    imagePath: string,
+    suggestedName: string
+  ): Promise<{ canceled: true } | { canceled: false; filePath: string }> =>
+    ipcRenderer.invoke("image:saveCopy", imagePath, suggestedName),
   selectAudio: (): Promise<SelectAudioResult> =>
     ipcRenderer.invoke("audio:select"),
   selectMediaFolder: (): Promise<SelectMediaFolderResult> =>
@@ -214,11 +236,13 @@ contextBridge.exposeInMainWorld("storyLife", {
     return () => ipcRenderer.removeListener("ai:projectProgress", handler);
   },
   aiGenerateSceneImage: (payload: {
-    sceneJson: string;
     prompt: string;
     referenceImagePaths?: string[];
     imageModel?: string;
     imageSize?: string;
+    imageQuality?: "low" | "medium" | "high";
+    preserveReferenceCanvas?: boolean;
+    requestId?: string;
   }): Promise<AIImageResult> => ipcRenderer.invoke("ai:generateSceneImage", payload),
   aiCancel: (requestId: string): Promise<{ ok: true }> =>
     ipcRenderer.invoke("ai:cancel", requestId)

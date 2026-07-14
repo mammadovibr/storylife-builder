@@ -22,7 +22,7 @@ interface StoryLifeArchiveManifest {
 interface MediaBinding {
   source: string;
   nameHint: string;
-  typeHint: "image" | "audio";
+  typeHint: "image" | "video" | "audio";
   setSource: (source: string) => void;
 }
 
@@ -186,7 +186,7 @@ function getProjectMediaBindings(project: StoryProject): MediaBinding[] {
     bindings.push({
       source: scene.imagePath,
       nameHint: `${scene.id}_image`,
-      typeHint: "image",
+      typeHint: scene.visualMediaType,
       setSource: (source) => { scene.imagePath = source; }
     });
     bindings.push({
@@ -195,6 +195,32 @@ function getProjectMediaBindings(project: StoryProject): MediaBinding[] {
       typeHint: "audio",
       setSource: (source) => { scene.soundPath = source; }
     });
+    for (const variant of scene.imageVariants) {
+      bindings.push({
+        source: variant.imagePath,
+        nameHint: `${scene.id}_${variant.id}`,
+        typeHint: "image",
+        setSource: (source) => { variant.imagePath = source; }
+      });
+      if (!variant.animation) continue;
+      bindings.push({
+        source: variant.animation.sourceImagePath,
+        nameHint: `${scene.id}_${variant.id}_source`,
+        typeHint: "image",
+        setSource: (source) => { variant.animation!.sourceImagePath = source; }
+      });
+      if (variant.animation.type === "aiFrames") {
+        variant.animation.frames.forEach((frame, frameIndex) => {
+          if (frame.source === "original") return;
+          bindings.push({
+            source: frame.imagePath,
+            nameHint: `${scene.id}_${variant.id}_frame_${frameIndex + 1}`,
+            typeHint: "image",
+            setSource: (source) => { frame.imagePath = source; }
+          });
+        });
+      }
+    }
   }
   bindings.push({
     source: project.audio.backgroundMusicPath,
@@ -225,7 +251,7 @@ function getProjectMediaBindings(project: StoryProject): MediaBinding[] {
 
 async function readBrowserMedia(
   source: string,
-  typeHint: "image" | "audio"
+  typeHint: "image" | "video" | "audio"
 ): Promise<{ bytes: Uint8Array; mimeType: string } | null> {
   const dataFile = parseDataUrl(source);
   if (dataFile) return dataFile;
@@ -293,13 +319,19 @@ function isSafeArchiveAssetPath(path: string): boolean {
   return path.startsWith("assets/") && !path.includes("..") && !path.includes("\\");
 }
 
-function extensionForMimeType(mimeType: string, typeHint: "image" | "audio"): string {
+function extensionForMimeType(
+  mimeType: string,
+  typeHint: "image" | "video" | "audio"
+): string {
   const normalized = mimeType.toLowerCase();
   const extensionMap: Record<string, string> = {
     "image/jpeg": "jpg",
     "image/png": "png",
     "image/webp": "webp",
     "image/gif": "gif",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov",
     "audio/mpeg": "mp3",
     "audio/wav": "wav",
     "audio/x-wav": "wav",
@@ -307,10 +339,13 @@ function extensionForMimeType(mimeType: string, typeHint: "image" | "audio"): st
     "audio/mp4": "m4a",
     "audio/webm": "webm"
   };
-  return extensionMap[normalized] ?? (typeHint === "image" ? "png" : "bin");
+  return extensionMap[normalized] ?? (typeHint === "image" ? "png" : typeHint === "video" ? "mp4" : "bin");
 }
 
-function mimeTypeFromPath(path: string, typeHint: "image" | "audio" = "image"): string {
+function mimeTypeFromPath(
+  path: string,
+  typeHint: "image" | "video" | "audio" = "image"
+): string {
   const cleanPath = path.split(/[?#]/)[0].toLowerCase();
   const extension = cleanPath.includes(".") ? cleanPath.split(".").pop() ?? "" : "";
   const mimeMap: Record<string, string> = {
@@ -319,13 +354,18 @@ function mimeTypeFromPath(path: string, typeHint: "image" | "audio" = "image"): 
     png: "image/png",
     webp: "image/webp",
     gif: "image/gif",
+    mp4: "video/mp4",
+    mov: "video/quicktime",
+    m4v: "video/mp4",
     mp3: "audio/mpeg",
     wav: "audio/wav",
     ogg: "audio/ogg",
     m4a: "audio/mp4",
-    webm: typeHint === "audio" ? "audio/webm" : "image/webp"
+    webm: typeHint === "audio" ? "audio/webm" : "video/webm"
   };
-  return mimeMap[extension] ?? (typeHint === "audio" ? "application/octet-stream" : "image/png");
+  return mimeMap[extension] ?? (typeHint === "audio"
+    ? "application/octet-stream"
+    : typeHint === "video" ? "video/mp4" : "image/png");
 }
 
 function sanitizeAssetName(value: string): string {

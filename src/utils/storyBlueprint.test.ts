@@ -86,6 +86,52 @@ describe("validateStoryBlueprint", () => {
       "scene_3: choice target scene_2 goes backward. Blueprint choices must move forward to prevent filler loops."
     );
   });
+
+  it("rejects a large story with too few decisions and only one ending", () => {
+    const scenes = Array.from({ length: 8 }, (_, index) => {
+      const sceneNumber = index + 1;
+      const nextSceneNumber = sceneNumber + 1;
+      return {
+        id: `scene_${sceneNumber}`,
+        title: `Story beat ${sceneNumber}`,
+        purpose: `Advance route ${sceneNumber}`,
+        arrivalReason: `The previous action leads to beat ${sceneNumber}`,
+        beat: `Consequence ${sceneNumber}`,
+        text: `The route develops through a distinct consequence in story beat ${sceneNumber}.`,
+        sceneType: sceneNumber === 8 ? "ending" : "normal",
+        choices: sceneNumber === 8
+          ? []
+          : [{
+              text: "Continue",
+              targetSceneId: `scene_${nextSceneNumber}`,
+              immediateConsequence: `Move to beat ${nextSceneNumber}`
+            }]
+      };
+    });
+    scenes[0].choices = [
+      {
+        text: "Take the first route",
+        targetSceneId: "scene_2",
+        immediateConsequence: "The first route opens"
+      },
+      {
+        text: "Take the second route",
+        targetSceneId: "scene_3",
+        immediateConsequence: "The second route opens"
+      }
+    ];
+    scenes[1].choices[0].targetSceneId = "scene_4";
+
+    const result = validateStoryBlueprint(
+      { title: "Thin graph", premise: "A fake large story", tone: "Clear", scenes },
+      8
+    );
+
+    expect(result.problems).toContain("Blueprint needs at least 2 main ending scenes.");
+    expect(result.problems).toContain(
+      "Blueprint needs at least 2 real branching decisions; only 1 were found."
+    );
+  });
 });
 
 describe("validateStoryBlueprintChunk", () => {

@@ -186,7 +186,33 @@ export function validateSemanticStoryBlueprint(
   const endingKeys = new Set(
     scenes.filter((scene) => scene.sceneType === "ending").map((scene) => scene.key)
   );
-  if (endingKeys.size === 0) problems.push("Blueprint has no ending scenes.");
+  const minimumEndingCount = scenes.length >= 8 ? 2 : 1;
+  if (endingKeys.size < minimumEndingCount) {
+    problems.push(`Blueprint needs at least ${minimumEndingCount} main ending scenes.`);
+  }
+  const minimumBranchingCount = scenes.length >= 8
+    ? Math.max(2, Math.floor(scenes.length / 8))
+    : 1;
+  const branchingCount = scenes.filter((scene) => scene.choices.length > 1).length;
+  if (branchingCount < minimumBranchingCount) {
+    problems.push(
+      `Blueprint needs at least ${minimumBranchingCount} real branching decisions; only ${branchingCount} were found.`
+    );
+  }
+  if (scenes.length >= 12) {
+    const incomingCount = new Map(scenes.map((scene) => [scene.key, 0]));
+    for (const scene of scenes) {
+      for (const choice of scene.choices) {
+        incomingCount.set(
+          choice.targetKey,
+          (incomingCount.get(choice.targetKey) ?? 0) + 1
+        );
+      }
+    }
+    if (!scenes.some((scene) => (incomingCount.get(scene.key) ?? 0) > 1)) {
+      problems.push("Blueprint branches never converge into compatible later routes or endings.");
+    }
+  }
   const reachableKeys = walkSemantic(scenes, scenes[0].key);
   for (const scene of scenes) {
     if (!reachableKeys.has(scene.key)) problems.push(`${scene.key}: scene is unreachable from the opening scene.`);
@@ -403,7 +429,10 @@ export function validateStoryBlueprint(
   const endingIds = new Set(
     scenes.filter((scene) => scene.sceneType === "ending").map((scene) => scene.id)
   );
-  if (endingIds.size === 0) problems.push("Blueprint has no ending scenes.");
+  const minimumEndingCount = scenes.length >= 8 ? 2 : 1;
+  if (endingIds.size < minimumEndingCount) {
+    problems.push(`Blueprint needs at least ${minimumEndingCount} main ending scenes.`);
+  }
 
   const reachableIds = walkForward(scenes, scenes[0]?.id ?? "");
   for (const scene of scenes) {
@@ -430,8 +459,28 @@ export function validateStoryBlueprint(
     }
   }
 
-  if (scenes.length > 3 && !scenes.some((scene) => scene.choices.length > 1)) {
-    problems.push("Blueprint has no branching scene.");
+  const minimumBranchingCount = scenes.length >= 8
+    ? Math.max(2, Math.floor(scenes.length / 8))
+    : scenes.length > 3 ? 1 : 0;
+  const branchingCount = scenes.filter((scene) => scene.choices.length > 1).length;
+  if (branchingCount < minimumBranchingCount) {
+    problems.push(
+      `Blueprint needs at least ${minimumBranchingCount} real branching decisions; only ${branchingCount} were found.`
+    );
+  }
+  if (scenes.length >= 12) {
+    const incomingCount = new Map(scenes.map((scene) => [scene.id, 0]));
+    for (const scene of scenes) {
+      for (const choice of scene.choices) {
+        incomingCount.set(
+          choice.targetSceneId,
+          (incomingCount.get(choice.targetSceneId) ?? 0) + 1
+        );
+      }
+    }
+    if (!scenes.some((scene) => (incomingCount.get(scene.id) ?? 0) > 1)) {
+      problems.push("Blueprint branches never converge into compatible later routes or endings.");
+    }
   }
   return { blueprint, problems: [...new Set(problems)].slice(0, 50) };
 }

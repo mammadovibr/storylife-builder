@@ -1,5 +1,10 @@
 import { useRef, useState } from "react";
-import { ProjectAudioSettings, ProjectTheme } from "../domain/project";
+import {
+  ProjectAudioSettings,
+  ProjectTheme,
+  SCENE_TRANSITION_OPTIONS,
+  SceneTransition
+} from "../domain/project";
 
 interface ProjectSettingsModalProps {
   audio: ProjectAudioSettings;
@@ -107,6 +112,21 @@ function ProjectThemeSettings({
           />
         </label>
       </div>
+      <label className="field-label">
+        Default scene transition
+        <select
+          value={theme.sceneTransition}
+          onChange={(event) =>
+            onUpdateTheme({ sceneTransition: event.target.value as SceneTransition })
+          }
+        >
+          {SCENE_TRANSITION_OPTIONS.map((transition) => (
+            <option key={transition.value} value={transition.value}>
+              {transition.label}
+            </option>
+          ))}
+        </select>
+      </label>
     </section>
   );
 }

@@ -5,6 +5,7 @@ async function buildPlayer() {
     configFile: false,
     root: process.cwd(),
     base: "./",
+    publicDir: false,
     build: {
       outDir: "dist-player",
       emptyOutDir: true,

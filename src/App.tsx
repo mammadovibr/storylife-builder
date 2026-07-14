@@ -1,7 +1,6 @@
 import {
   ChangeEvent,
   MouseEvent,
-  PointerEvent as ReactPointerEvent,
   useEffect,
   useMemo,
   useRef,
@@ -16,7 +15,9 @@ import { PlayMode } from "./components/PlayMode";
 import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { Toolbar } from "./components/Toolbar";
 import {
+  applySceneVisual,
   createChoice,
+  createChoiceOutcome,
   createDefaultProject,
   createFlag,
   createParameter,
@@ -40,6 +41,7 @@ import {
   parseLegacyProjectText,
   saveStoryLifeProjectInBrowser
 } from "./utils/projectFiles";
+import { arrangeScenesAsTree } from "./utils/arrangeNodes";
 
 type ResizeTarget = "left" | "logic" | "inspector";
 type SaveState = "saved" | "unsaved" | "autosaved";
@@ -57,12 +59,16 @@ export default function App() {
   const [isProjectSettingsOpen, setProjectSettingsOpen] = useState(false);
   const [isAIAssistantOpen, setAIAssistantOpen] = useState(false);
   const [isProjectManagerOpen, setProjectManagerOpen] = useState(true);
+  const [projectManagerRevision, setProjectManagerRevision] = useState(0);
+  const [inspectorSessionRevision, setInspectorSessionRevision] = useState(0);
+  const [isCloseDialogOpen, setCloseDialogOpen] = useState(false);
+  const [isClosingApplication, setClosingApplication] = useState(false);
   const [isLogicPanelCollapsed, setLogicPanelCollapsed] = useState(false);
-  const [aiPanelWidth, setAIPanelWidth] = useState(420);
   const [pendingChoiceTarget, setPendingChoiceTarget] = useState<{
     sceneId: SceneId;
     choiceId: string;
   } | null>(null);
+  const [focusChoiceId, setFocusChoiceId] = useState<string | null>(null);
   const [canvasViewResetSignal, setCanvasViewResetSignal] = useState(0);
   const [canvasRefreshSignal, setCanvasRefreshSignal] = useState(0);
   const [canvasFocusSelectedSignal, setCanvasFocusSelectedSignal] = useState(0);
@@ -70,6 +76,7 @@ export default function App() {
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const firstProjectEffectRef = useRef(true);
   const projectRef = useRef(project);
+  const currentProjectFilePathRef = useRef<string | null>(null);
   const selectedSceneIdRef = useRef<SceneId | null>(selectedSceneId);
   const copiedSceneRef = useRef<Scene | null>(null);
   const undoStackRef = useRef<StoryProject[]>([]);
@@ -167,6 +174,10 @@ export default function App() {
 
   useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent) {
+      // Electron already keeps an autosave. Do not block the native close button or Alt+F4.
+      if (window.storyLife) {
+        return;
+      }
       if (saveState === "unsaved" || saveState === "autosaved") {
         event.preventDefault();
         event.returnValue = "Save before exit?";
@@ -176,6 +187,13 @@ export default function App() {
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [saveState]);
+
+  useEffect(() => {
+    if (!window.storyLife?.onCloseRequested) {
+      return;
+    }
+    return window.storyLife.onCloseRequested(() => setCloseDialogOpen(true));
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -189,7 +207,7 @@ export default function App() {
 
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        void saveProject();
+        void saveProject(event.shiftKey);
         return;
       }
 
@@ -365,7 +383,9 @@ export default function App() {
       return;
     }
 
+    currentProjectFilePathRef.current = null;
     setProject(autosave.project);
+    setInspectorSessionRevision((revision) => revision + 1);
     clearProjectHistory();
     setSelectedSceneId(autosave.project.startSceneId);
     setPlaySceneId(null);
@@ -422,9 +442,11 @@ export default function App() {
               ...choice,
               targetNodeId,
               outcomes:
-                choice.useMultipleOutcomes || choice.outcomes.length !== 1
+                choice.useMultipleOutcomes
                   ? choice.outcomes
-                  : [{ ...choice.outcomes[0], targetSceneId: targetNodeId, percent: 100 }]
+                  : choice.outcomes.length === 1
+                    ? [{ ...choice.outcomes[0], targetSceneId: targetNodeId, percent: 100 }]
+                    : [createChoiceOutcome(targetNodeId, 100, `outcome_${choice.id}`)]
             }
           : choice
       )
@@ -446,7 +468,12 @@ export default function App() {
       return;
     }
 
+    const deletedSceneIndex = currentProject.scenes.findIndex(
+      (scene) => scene.id === sceneId
+    );
     const fallbackScene =
+      currentProject.scenes[deletedSceneIndex + 1] ??
+      currentProject.scenes[deletedSceneIndex - 1] ??
       currentProject.scenes.find((scene) => scene.id !== sceneId) ??
       currentProject.scenes[0];
 
@@ -551,12 +578,137 @@ export default function App() {
   }
 
   function addChoice(sceneId: SceneId) {
-    const fallbackTarget = project.scenes[0]?.id;
-    if (!fallbackTarget) {
-      return;
-    }
+    commitProjectChange((currentProject) => {
+      const choiceNumber = getNextNumericId(
+        "choice",
+        currentProject.scenes.flatMap((scene) => scene.choices)
+      );
+      const choice = {
+        ...createChoice("", `choice_${choiceNumber}`),
+        outcomes: []
+      };
 
-    addChoiceToTarget(sceneId, fallbackTarget);
+      return {
+        ...currentProject,
+        scenes: currentProject.scenes.map((scene) =>
+          scene.id === sceneId
+            ? { ...scene, choices: [...scene.choices, choice] }
+            : scene
+        )
+      };
+    });
+    setStatus("Choice created without a target scene");
+  }
+
+  function addChoiceWithScene(sceneId: SceneId) {
+    let newSceneId = "";
+    commitProjectChange((currentProject) => {
+      const sourceScene = currentProject.scenes.find((scene) => scene.id === sceneId);
+      if (!sourceScene) return currentProject;
+
+      const sceneNumber = getNextNumericId("scene", currentProject.scenes);
+      const choiceNumber = getNextNumericId(
+        "choice",
+        currentProject.scenes.flatMap((scene) => scene.choices)
+      );
+      const newScene = createScene(sceneNumber, `scene_${sceneNumber}`);
+      newScene.position = findAvailableScenePosition(
+        currentProject.scenes,
+        getPreferredNewScenePosition(currentProject.scenes, undefined, {
+          x: sourceScene.position.x + 300,
+          y: sourceScene.position.y + sourceScene.choices.length * 170
+        })
+      );
+      newSceneId = newScene.id;
+
+      return {
+        ...currentProject,
+        scenes: [
+          ...currentProject.scenes.map((scene) =>
+            scene.id === sceneId
+              ? {
+                  ...scene,
+                  choices: [
+                    ...scene.choices,
+                    createChoice(newScene.id, `choice_${choiceNumber}`)
+                  ]
+                }
+              : scene
+          ),
+          newScene
+        ]
+      };
+    });
+    if (newSceneId) {
+      setStatus(`Choice connected to new scene ${newSceneId}`);
+    }
+  }
+
+  function createConnectedSceneAt(sceneId: SceneId, position: { x: number; y: number }) {
+    let newSceneId = "";
+    let newChoiceId = "";
+    commitProjectChange((currentProject) => {
+      const sourceScene = currentProject.scenes.find((scene) => scene.id === sceneId);
+      if (!sourceScene) return currentProject;
+
+      const sceneNumber = getNextNumericId("scene", currentProject.scenes);
+      const choiceNumber = getNextNumericId(
+        "choice",
+        currentProject.scenes.flatMap((scene) => scene.choices)
+      );
+      const newScene = createScene(sceneNumber, `scene_${sceneNumber}`);
+      newScene.position = findAvailableScenePosition(currentProject.scenes, position);
+      const newChoice = createChoice(newScene.id, `choice_${choiceNumber}`);
+      newSceneId = newScene.id;
+      newChoiceId = newChoice.id;
+
+      return {
+        ...currentProject,
+        scenes: [
+          ...currentProject.scenes.map((scene) =>
+            scene.id === sceneId
+              ? { ...scene, choices: [...scene.choices, newChoice] }
+              : scene
+          ),
+          newScene
+        ]
+      };
+    });
+
+    if (newSceneId && newChoiceId) {
+      setSelectedSceneId(sceneId);
+      setFocusChoiceId(newChoiceId);
+      setStatus(`Created ${newSceneId}. Type the new choice text.`);
+    }
+  }
+
+  function applySceneLayoutToAll(sourceScene: Scene) {
+    commitProjectChange((currentProject) => ({
+      ...currentProject,
+      scenes: currentProject.scenes.map((scene) => ({
+        ...scene,
+        layoutType: sourceScene.layoutType,
+        style: { ...sourceScene.style }
+      }))
+    }));
+    setStatus(`Scene layout applied to all ${projectRef.current.scenes.length} scenes`);
+  }
+
+  function deleteAutosave() {
+    localStorage.removeItem(AUTOSAVE_KEY);
+    setProjectManagerRevision((revision) => revision + 1);
+    setStatus("Autosave deleted");
+  }
+
+  function deleteBackup(savedAt: number) {
+    const remainingBackups = readBackups().filter((backup) => backup.savedAt !== savedAt);
+    if (remainingBackups.length === 0) {
+      localStorage.removeItem(BACKUPS_KEY);
+    } else {
+      localStorage.setItem(BACKUPS_KEY, JSON.stringify(remainingBackups));
+    }
+    setProjectManagerRevision((revision) => revision + 1);
+    setStatus("Backup deleted");
   }
 
   function addChoiceToTarget(sceneId: SceneId, targetNodeId: SceneId) {
@@ -683,6 +835,18 @@ export default function App() {
     updateScene(sceneId, (scene) => ({ ...scene, nodeColor }));
   }
 
+  function arrangeNodes() {
+    commitProjectChange((currentProject) => ({
+      ...currentProject,
+      scenes: arrangeScenesAsTree(
+        currentProject.scenes,
+        currentProject.startSceneId
+      )
+    }));
+    setCanvasViewResetSignal((currentSignal) => currentSignal + 1);
+    setStatus("Nodes arranged as a top-down story tree");
+  }
+
   function addMediaFolder(folder: MediaFolder) {
     commitProjectChange((currentProject) => ({
       ...currentProject,
@@ -717,10 +881,16 @@ export default function App() {
     updateScene(sceneId, (scene) =>
       media.type === "audio"
         ? { ...scene, soundPath: media.path }
-        : { ...scene, imagePath: media.path }
+        : applySceneVisual(scene, media.path, media.type, {
+            name: media.path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "Imported image"
+          })
     );
     setSelectedSceneId(sceneId);
-    setStatus(media.type === "audio" ? "Scene sound applied" : "Scene image applied");
+    setStatus(
+      media.type === "audio"
+        ? "Scene sound applied"
+        : media.type === "video" ? "Scene video applied" : "Scene image applied"
+    );
   }
 
   function deleteFlag(flagId: FlagId) {
@@ -742,39 +912,75 @@ export default function App() {
     }));
   }
 
-  async function saveProject() {
-    const projectJson = serializeProject(project);
+  async function saveProject(saveAs = false): Promise<boolean> {
+    const projectSnapshot = projectRef.current;
+    const projectJson = serializeProject(projectSnapshot);
 
     if (!window.storyLife) {
       try {
-        const fileName = createStoryLifeProjectFileName(project.projectName);
-        const result = await saveStoryLifeProjectInBrowser(project, fileName);
+        const fileName = createStoryLifeProjectFileName(projectSnapshot.projectName);
+        const result = await saveStoryLifeProjectInBrowser(projectSnapshot, fileName);
         if (result === "canceled") {
           setStatus("Project save canceled");
-          return;
+          return false;
         }
         recordManualSave();
-        setSaveState("saved");
+        const isStillCurrent = serializeProject(projectRef.current) === projectJson;
+        setSaveState(isStillCurrent ? "saved" : "unsaved");
         setStatus(
-          result === "shared"
+          !isStillCurrent
+            ? "Project snapshot saved, but newer edits are still unsaved"
+            : result === "shared"
             ? `Portable project shared: ${fileName}`
             : `Portable project downloaded: ${fileName}`
         );
+        return isStillCurrent;
       } catch (error) {
         setStatus(getErrorMessage(error));
+        return false;
       }
-      return;
     }
 
     try {
-      const result = await window.storyLife.saveProject(projectJson);
+      const result = await window.storyLife.saveProject(projectJson, {
+        filePath: currentProjectFilePathRef.current ?? undefined,
+        suggestedName: createStoryLifeProjectFileName(projectSnapshot.projectName),
+        saveAs
+      });
       if (!result.canceled) {
+        currentProjectFilePathRef.current = result.filePath;
         recordManualSave();
-        setSaveState("saved");
-        setStatus(`Saved: ${result.filePath}`);
+        const isStillCurrent = serializeProject(projectRef.current) === projectJson;
+        setSaveState(isStillCurrent ? "saved" : "unsaved");
+        setStatus(
+          isStillCurrent
+            ? `${saveAs ? "Saved as" : "Saved and verified"}: ${result.filePath}`
+            : `Saved snapshot: ${result.filePath}. Newer edits are still unsaved.`
+        );
+        return isStillCurrent;
       }
+      setStatus("Project save canceled");
+      return false;
     } catch (error) {
       setStatus(getErrorMessage(error));
+      return false;
+    }
+  }
+
+  async function confirmApplicationClose(saveFirst: boolean) {
+    if (isClosingApplication || !window.storyLife?.confirmClose) {
+      return;
+    }
+    setClosingApplication(true);
+    try {
+      if (saveFirst && !(await saveProject())) {
+        setClosingApplication(false);
+        return;
+      }
+      await window.storyLife.confirmClose();
+    } catch (error) {
+      setStatus(getErrorMessage(error));
+      setClosingApplication(false);
     }
   }
 
@@ -791,7 +997,9 @@ export default function App() {
       }
 
       const loadedProject = migrateProject(parseLegacyProjectText(result.contents));
+      currentProjectFilePathRef.current = result.canOverwrite ? result.filePath : null;
       setProject(loadedProject);
+      setInspectorSessionRevision((revision) => revision + 1);
       clearProjectHistory();
       setSelectedSceneId(loadedProject.startSceneId);
       setPlaySceneId(null);
@@ -814,7 +1022,9 @@ export default function App() {
     }
 
     const nextProject = createDefaultProject();
+    currentProjectFilePathRef.current = null;
     setProject(nextProject);
+    setInspectorSessionRevision((revision) => revision + 1);
     clearProjectHistory();
     setSelectedSceneId(nextProject.startSceneId);
     setPlaySceneId(null);
@@ -848,7 +1058,9 @@ export default function App() {
       return;
     }
 
+    currentProjectFilePathRef.current = null;
     setProject(backup.project);
+    setInspectorSessionRevision((revision) => revision + 1);
     clearProjectHistory();
     setSelectedSceneId(backup.project.startSceneId);
     setPlaySceneId(null);
@@ -869,7 +1081,9 @@ export default function App() {
 
     try {
       const loadedProject = await loadStoryLifeProjectFile(file);
+      currentProjectFilePathRef.current = null;
       setProject(loadedProject);
+      setInspectorSessionRevision((revision) => revision + 1);
       clearProjectHistory();
       setSelectedSceneId(loadedProject.startSceneId);
       setPlaySceneId(null);
@@ -941,27 +1155,6 @@ export default function App() {
     window.addEventListener("mouseup", handleMouseUp);
   }
 
-  function startAIPanelResize(event: ReactPointerEvent<HTMLSpanElement>) {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = aiPanelWidth;
-
-    function handlePointerMove(moveEvent: PointerEvent) {
-      const delta = startX - moveEvent.clientX;
-      setAIPanelWidth(clamp(startWidth + delta, 360, Math.min(760, window.innerWidth - 120)));
-    }
-
-    function handlePointerUp() {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-      document.body.classList.remove("is-resizing-panels");
-    }
-
-    document.body.classList.add("is-resizing-panels");
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-  }
-
   if (playSceneId) {
     return (
       <PlayMode
@@ -974,12 +1167,7 @@ export default function App() {
   }
 
   return (
-    <div
-      className={`app-shell ${isAIAssistantOpen ? "ai-panel-open" : ""}`}
-      style={{
-        ["--ai-panel-width" as string]: `${aiPanelWidth}px`
-      }}
-    >
+    <div className="app-shell">
       <input
         ref={fallbackProjectInputRef}
         className="hidden-file-input"
@@ -996,18 +1184,22 @@ export default function App() {
           }))
         }
         onNewProject={newProject}
-        onSave={saveProject}
+        onSave={() => void saveProject()}
+        onSaveAs={() => void saveProject(true)}
         onLoad={loadProject}
         onExport={exportGame}
+        onArrangeNodes={arrangeNodes}
         onProjectManager={() => setProjectManagerOpen(true)}
-        onAIAssistant={() => setAIAssistantOpen(true)}
+        onImageStudio={() => setAIAssistantOpen(true)}
         onProjectSettings={() => setProjectSettingsOpen(true)}
         onPlay={() => setPlaySceneId(project.startSceneId)}
         onPlayFromHere={() => selectedScene && setPlaySceneId(selectedScene.id)}
         onDuplicateScene={duplicateSelectedScene}
         onRestoreBackup={restoreBackup}
+        onExit={() => setCloseDialogOpen(true)}
         canUseSelectedSceneActions={Boolean(selectedScene)}
         canExportGame={canExportGame}
+        canExitApplication={Boolean(window.storyLife?.confirmClose)}
         saveState={saveState}
       />
       <main
@@ -1018,7 +1210,6 @@ export default function App() {
           }px 6px minmax(0, 1fr)${
             selectedScene ? ` 6px ${panelSizes.inspector}px` : ""
           }`,
-          marginRight: isAIAssistantOpen ? `calc(${aiPanelWidth}px + 28px)` : undefined
         }}
       >
         <LeftPanel
@@ -1105,6 +1296,7 @@ export default function App() {
             updateScene(sceneId, (scene) => ({ ...scene, position }))
           }
           onConnectScenes={addChoiceToTarget}
+          onCreateConnectedScene={createConnectedSceneAt}
           onChangeSceneNodeColor={changeSceneNodeColor}
           onApplyMediaToScene={applyMediaToScene}
         />
@@ -1117,6 +1309,7 @@ export default function App() {
               onMouseDown={(event) => startPanelResize("inspector", event)}
             />
             <Inspector
+              key={inspectorSessionRevision}
               selectedScene={selectedScene}
               scenes={project.scenes}
               parameters={project.parameters}
@@ -1124,6 +1317,7 @@ export default function App() {
               projectTheme={project.theme}
               onUpdateScene={updateScene}
               onAddChoice={addChoice}
+              onAddChoiceWithScene={addChoiceWithScene}
               onDeleteScene={deleteScene}
               onPickChoiceTarget={(sceneId, choiceId) => {
                 setPendingChoiceTarget({ sceneId, choiceId });
@@ -1135,7 +1329,10 @@ export default function App() {
                 setCanvasRefreshSignal((currentSignal) => currentSignal + 1);
                 setCanvasFocusSelectedSignal((currentSignal) => currentSignal + 1);
               }}
-              isPickingChoiceTarget={Boolean(pendingChoiceTarget)}
+              onApplySceneLayoutToAll={applySceneLayoutToAll}
+              pickingChoiceId={pendingChoiceTarget?.choiceId ?? null}
+              focusChoiceId={focusChoiceId}
+              onChoiceFocusHandled={() => setFocusChoiceId(null)}
             />
           </>
         )}
@@ -1153,21 +1350,24 @@ export default function App() {
         <AIAssistantModal
           project={project}
           selectedSceneId={selectedSceneId}
-          width={aiPanelWidth}
           onApplyProject={applyAIProject}
-          onResizeStart={startAIPanelResize}
           onClose={() => setAIAssistantOpen(false)}
         />
       )}
       {isProjectManagerOpen && (
         <ProjectManagerModal
+          key={projectManagerRevision}
           autosave={readAutosave()}
           backups={readBackups()}
           onCreateNew={() => newProject(true)}
           onLoadProject={() => void loadProject()}
           onOpenAutosave={restoreAutosaveProject}
+          onDeleteAutosave={deleteAutosave}
+          onDeleteBackup={deleteBackup}
           onOpenBackup={(backup) => {
+            currentProjectFilePathRef.current = null;
             setProject(backup.project);
+            setInspectorSessionRevision((revision) => revision + 1);
             clearProjectHistory();
             setSelectedSceneId(backup.project.startSceneId);
             setPlaySceneId(null);
@@ -1178,6 +1378,46 @@ export default function App() {
           onClose={() => setProjectManagerOpen(false)}
         />
       )}
+      {isCloseDialogOpen && (
+        <CloseApplicationModal
+          isSaving={isClosingApplication}
+          onSaveAndClose={() => void confirmApplicationClose(true)}
+          onCloseWithoutSaving={() => void confirmApplicationClose(false)}
+          onCancel={() => setCloseDialogOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function CloseApplicationModal({
+  isSaving,
+  onSaveAndClose,
+  onCloseWithoutSaving,
+  onCancel
+}: {
+  isSaving: boolean;
+  onSaveAndClose: () => void;
+  onCloseWithoutSaving: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="modal-backdrop close-application-backdrop" role="presentation">
+      <section className="close-application-modal" role="dialog" aria-modal="true" aria-label="Close application">
+        <h2>Save project before closing?</h2>
+        <p>Your latest edits are also kept in the local autosave.</p>
+        <div className="close-application-actions">
+          <button type="button" className="primary-button" onClick={onSaveAndClose} disabled={isSaving}>
+            Save and close
+          </button>
+          <button type="button" className="danger-button" onClick={onCloseWithoutSaving} disabled={isSaving}>
+            Close without saving
+          </button>
+          <button type="button" onClick={onCancel} disabled={isSaving}>
+            Cancel
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -1188,7 +1428,9 @@ function ProjectManagerModal({
   onCreateNew,
   onLoadProject,
   onOpenAutosave,
+  onDeleteAutosave,
   onOpenBackup,
+  onDeleteBackup,
   onClose
 }: {
   autosave: StoredProjectSnapshot | null;
@@ -1196,7 +1438,9 @@ function ProjectManagerModal({
   onCreateNew: () => void;
   onLoadProject: () => void;
   onOpenAutosave: () => void;
+  onDeleteAutosave: () => void;
   onOpenBackup: (backup: StoredProjectSnapshot) => void;
+  onDeleteBackup: (savedAt: number) => void;
   onClose: () => void;
 }) {
   return (
@@ -1224,6 +1468,18 @@ function ProjectManagerModal({
           <button type="button" onClick={onOpenAutosave} disabled={!autosave}>
             Open Autosave
           </button>
+          <button
+            type="button"
+            className="danger-button"
+            onClick={() => {
+              if (autosave && window.confirm("Delete the autosave?")) {
+                onDeleteAutosave();
+              }
+            }}
+            disabled={!autosave}
+          >
+            Delete Autosave
+          </button>
         </div>
         <section className="project-manager-recents">
           <h3>Recent Backups</h3>
@@ -1231,14 +1487,28 @@ function ProjectManagerModal({
             <p className="empty-state">No backups yet.</p>
           ) : (
             backups.slice(0, 8).map((backup) => (
-              <button
-                type="button"
-                key={backup.savedAt}
-                onClick={() => onOpenBackup(backup)}
-              >
-                <strong>{backup.project.projectName}</strong>
-                <span>{new Date(backup.savedAt).toLocaleString()}</span>
-              </button>
+              <article className="project-backup-item" key={backup.savedAt}>
+                <button
+                  type="button"
+                  className="project-backup-open-button"
+                  onClick={() => onOpenBackup(backup)}
+                >
+                  <strong>{backup.project.projectName}</strong>
+                  <span>{new Date(backup.savedAt).toLocaleString()}</span>
+                </button>
+                <button
+                  type="button"
+                  className="danger-button project-backup-delete-button"
+                  onClick={() => {
+                    if (window.confirm(`Delete backup \"${backup.project.projectName}\"?`)) {
+                      onDeleteBackup(backup.savedAt);
+                    }
+                  }}
+                  title="Delete this backup"
+                >
+                  Delete
+                </button>
+              </article>
             ))
           )}
         </section>

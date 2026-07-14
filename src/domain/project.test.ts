@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  activateSceneImageVariant,
+  applySceneVisual,
   applyChoiceEffects,
   choiceConditionsPass,
   createFlag,
@@ -12,6 +14,7 @@ import {
   createParameterEffect,
   createRuntimeState,
   createScene,
+  getActiveSceneImageVariant,
   migrateProject,
   resolveChoiceTarget
 } from "./project";
@@ -52,15 +55,20 @@ describe("project domain", () => {
     expect(migratedProject.audio.backgroundMusicPath).toBe("");
     expect(migratedProject.audio.musicFadeInSeconds).toBe(0.8);
     expect(migratedProject.theme.backgroundColor).toBe("#eee8dc");
+    expect(migratedProject.theme.sceneTransition).toBe("fade");
     expect(migratedProject.mediaLibrary.folders).toEqual([]);
     expect(migratedProject.storyBible.premise).toBe("");
     expect(migratedProject.storyBible.chapterPlan).toEqual([]);
     expect(migratedProject.scenes[0].imagePath).toBe("");
+    expect(migratedProject.scenes[0].visualMediaType).toBe("image");
+    expect(migratedProject.scenes[0].videoLoop).toBe(true);
     expect(migratedProject.scenes[0].soundPath).toBe("");
     expect(migratedProject.scenes[0].soundVolume).toBe(1);
     expect(migratedProject.scenes[0].layoutType).toBe("imageTop");
     expect(migratedProject.scenes[0].nodeColor).toBe("slate");
     expect(migratedProject.scenes[0].style.textScale).toBe(1);
+    expect(migratedProject.scenes[0].style.showSceneTitle).toBe(true);
+    expect(migratedProject.scenes[0].style.sceneTransition).toBe("project");
     expect(migratedProject.scenes[0].choices[0].effects).toEqual([]);
     expect(migratedProject.scenes[0].choices[0].conditions).toEqual([]);
     expect(migratedProject.scenes[0].choices[0].conditionFailBehavior).toBe(
@@ -74,6 +82,26 @@ describe("project domain", () => {
         percent: 100
       }
     ]);
+  });
+
+  it("infers video media for older projects that already contain a video path", () => {
+    const project = createDefaultProject();
+    const rawProject = JSON.parse(JSON.stringify(project));
+    delete rawProject.scenes[0].visualMediaType;
+    delete rawProject.scenes[0].videoLoop;
+    rawProject.scenes[0].imagePath = "assets/intro.webm";
+
+    const migratedProject = migrateProject(rawProject);
+
+    expect(migratedProject.scenes[0].visualMediaType).toBe("video");
+    expect(migratedProject.scenes[0].videoLoop).toBe(true);
+  });
+
+  it("creates a new choice without placeholder text", () => {
+    const choice = createChoice("scene_2", "choice_1");
+
+    expect(choice.text).toBe("");
+    expect(choice.targetNodeId).toBe("scene_2");
   });
 
   it("keeps story bible memory when loading a saved project", () => {
@@ -159,6 +187,12 @@ describe("project domain", () => {
       textScale: 1.72,
       choicesOffsetX: 270,
       choicesOffsetY: 930,
+      titleTextOffsetX: 45,
+      titleTextOffsetY: -30,
+      sceneTextOffsetX: -75,
+      sceneTextOffsetY: 60,
+      choiceTextOffsetX: 90,
+      choiceTextOffsetY: 30,
       choicesScale: 1.25
     };
 
@@ -170,6 +204,43 @@ describe("project domain", () => {
     expect(migratedProject.scenes[0].style.textOffsetY).toBe(840);
     expect(migratedProject.scenes[0].style.textScale).toBe(1.72);
     expect(migratedProject.scenes[0].style.choicesOffsetY).toBe(930);
+    expect(migratedProject.scenes[0].style.titleTextOffsetX).toBe(45);
+    expect(migratedProject.scenes[0].style.sceneTextOffsetY).toBe(60);
+    expect(migratedProject.scenes[0].style.choiceTextOffsetX).toBe(90);
+  });
+
+  it("keeps project and per-scene transitions when loading a saved project", () => {
+    const project = createDefaultProject();
+    project.theme.sceneTransition = "pageTurn";
+    project.scenes[0].style.sceneTransition = "pushLeft";
+
+    const migratedProject = migrateProject(JSON.parse(JSON.stringify(project)));
+
+    expect(migratedProject.theme.sceneTransition).toBe("pageTurn");
+    expect(migratedProject.scenes[0].style.sceneTransition).toBe("pushLeft");
+  });
+
+  it("keeps scene border visibility and choice frame settings", () => {
+    const project = createDefaultProject();
+    project.scenes[0].style = {
+      ...project.scenes[0].style,
+      titleBorderEnabled: false,
+      textBorderEnabled: false,
+      choicesBorderEnabled: false,
+      choicesFrameStyle: "ornate_30",
+      textPanelColor: "linear-gradient(135deg, #112233 0%, #aabbcc 100%)"
+    };
+
+    const migratedProject = migrateProject(JSON.parse(JSON.stringify(project)));
+    const style = migratedProject.scenes[0].style;
+
+    expect(style.titleBorderEnabled).toBe(false);
+    expect(style.textBorderEnabled).toBe(false);
+    expect(style.choicesBorderEnabled).toBe(false);
+    expect(style.choicesFrameStyle).toBe("crafted_10");
+    expect(style.textPanelColor).toBe(
+      "linear-gradient(135deg, #112233 0%, #aabbcc 100%)"
+    );
   });
 
   it("repairs duplicate choice ids while keeping targetNodeId links", () => {
@@ -187,6 +258,24 @@ describe("project domain", () => {
     expect(new Set(choiceIds).size).toBe(choiceIds.length);
     expect(migratedProject.scenes[0].choices[0].targetNodeId).toBe("scene_2");
     expect(migratedProject.scenes[1].choices[0].targetNodeId).toBe("scene_1");
+  });
+
+  it("keeps generated image variants selectable instead of replacing them", () => {
+    let scene = createScene(1);
+    scene = applySceneVisual(scene, "C:\\images\\first.jpg", "image", {
+      name: "First"
+    });
+    const firstVariantId = scene.activeImageVariantId;
+    scene = applySceneVisual(scene, "C:\\images\\second.jpg", "image", {
+      name: "Second"
+    });
+
+    expect(scene.imageVariants).toHaveLength(2);
+    expect(scene.imagePath).toContain("second.jpg");
+
+    scene = activateSceneImageVariant(scene, firstVariantId);
+    expect(scene.imagePath).toContain("first.jpg");
+    expect(getActiveSceneImageVariant(scene)?.name).toBe("First");
   });
 
   it("checks parameter and flag conditions", () => {

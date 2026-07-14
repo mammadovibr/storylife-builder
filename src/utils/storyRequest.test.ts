@@ -23,4 +23,15 @@ describe("extractRequestedSceneCount", () => {
     ].join("\n\n");
     expect(extractRequestedSceneCount(prompt)).toBe(30);
   });
+
+  it("ignores scene counts quoted inside old error messages", () => {
+    const prompt = [
+      "LATEST BUILD INSTRUCTION:\nBuild the project from the story we discussed in chat.",
+      "RECENT STORY DISCUSSION TO FOLLOW STRICTLY:",
+      "User: LATEST BUILD INSTRUCTION:\nWrite a honey badger story with 20 scenes and two endings.",
+      "Assistant: Story architecture has 24 scene contracts; exactly 20 are required.",
+      "Assistant: Previous attempt had 23 scene contracts."
+    ].join("\n\n");
+    expect(extractRequestedSceneCount(prompt)).toBe(20);
+  });
 });

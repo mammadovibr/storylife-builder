@@ -1,15 +1,23 @@
 import { PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  activateSceneImageVariant,
+  applySceneVisual,
   createChoice,
   createChoiceOutcome,
   createDefaultProject,
   createScene,
+  getActiveSceneImageVariant,
   migrateProject,
   serializeProject,
+  SceneImageAnimation,
   StoryProject
 } from "../domain/project";
 import { extractRequestedSceneCount } from "../utils/storyRequest";
+import { fitStoryArchitectureToSceneCount } from "../utils/storyArchitecture";
+import { savePicture } from "../utils/savePicture";
+import { AnimatedSceneImage } from "./AnimatedSceneImage";
+import { ImageAnimationModal } from "./ImageAnimationModal";
 import {
   compileSemanticStoryBlueprint,
   SemanticStoryBlueprint,
@@ -23,9 +31,7 @@ import {
 interface AIAssistantModalProps {
   project: StoryProject;
   selectedSceneId: string | null;
-  width: number;
   onApplyProject: (project: StoryProject) => void;
-  onResizeStart: (event: ReactPointerEvent<HTMLSpanElement>) => void;
   onClose: () => void;
 }
 
@@ -64,6 +70,7 @@ interface ImageQueueItem {
   referenceIds: string[];
   imageModel: string;
   imageSize: string;
+  imageQuality: "low" | "medium" | "high";
   status: "queued" | "running" | "done" | "error";
   startedAt?: number;
   finishedAt?: number;
@@ -90,19 +97,19 @@ type AIStage =
   | "stopped"
   | "error";
 
-const AI_MESSAGES_KEY = "storylife-ai-assistant-messages-v1";
-const AI_DRAFT_KEY = "storylife-ai-assistant-draft-v1";
-const AI_STORY_MEMORY_KEY = "storylife-ai-assistant-story-memory-v1";
-const AI_STORY_PLAN_KEY = "storylife-ai-assistant-story-plan-v1";
-const AI_STORY_REPORT_KEY = "storylife-ai-assistant-story-report-v1";
-const AI_PROJECT_JSON_DRAFT_KEY = "storylife-ai-project-json-draft-v3";
-const AI_PROJECT_WORKING_DRAFT_KEY = "storylife-ai-project-working-draft-v3";
-const AI_PROJECT_MEMORY_LIBRARY_KEY = "storylife-ai-project-memory-library-v1";
+const AI_MESSAGES_KEY = "storylife-ai-assistant-messages-v2";
+const AI_DRAFT_KEY = "storylife-ai-assistant-draft-v2";
+const AI_STORY_MEMORY_KEY = "storylife-ai-assistant-story-memory-v2";
+const AI_STORY_PLAN_KEY = "storylife-ai-assistant-story-plan-v2";
+const AI_STORY_REPORT_KEY = "storylife-ai-assistant-story-report-v2";
+const AI_PROJECT_JSON_DRAFT_KEY = "storylife-ai-project-json-draft-v4";
+const AI_PROJECT_WORKING_DRAFT_KEY = "storylife-ai-project-working-draft-v4";
+const AI_PROJECT_MEMORY_LIBRARY_KEY = "storylife-ai-project-memory-library-v2";
 const ONE_SHOT_PROJECT_SCENE_LIMIT = 8;
-const LARGE_PROJECT_CHUNK_SIZE = 8;
+const LARGE_PROJECT_CHUNK_SIZE = 5;
 const LARGE_PROJECT_CHUNK_PAUSE_MS = 900;
 const STORY_BLUEPRINT_ATTEMPTS = 3;
-const STORY_ARCHITECTURE_PASSES = 2;
+const STORY_MAP_ATTEMPTS = 2;
 const STORY_BLUEPRINT_CHUNK_ATTEMPTS = 3;
 const DEFAULT_STORY_STYLE_IDS = ["adventure", "cinematic"];
 const STORY_STYLE_OPTIONS = [
@@ -335,13 +342,13 @@ const INITIAL_MESSAGES: ChatMessage[] = [
       "AI Assistant is ready. Tell me what story/game/project to build. I will plan it, write a hidden JSON draft, check it, and load it only after you approve."
   }
 ];
+const SHOW_STORY_AI = false;
+const SHOW_IMAGE_STUDIO_SIDEBAR = false;
 
 export function AIAssistantModal({
   project,
   selectedSceneId,
-  width,
   onApplyProject,
-  onResizeStart,
   onClose
 }: AIAssistantModalProps) {
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -352,15 +359,22 @@ export function AIAssistantModal({
   const [storyText, setStoryText] = useState(() => readStoredText(AI_DRAFT_KEY));
   const [storyMemory, setStoryMemory] = useState(() => readStoredText(AI_STORY_MEMORY_KEY));
   const [imagePrompt, setImagePrompt] = useState("");
-  const [isImageStudioOpen, setImageStudioOpen] = useState(false);
-  const [imageStudioSceneIndex, setImageStudioSceneIndex] = useState(0);
+  const [isImageStudioOpen, setImageStudioOpen] = useState(true);
+  const [imageStudioSceneIndex, setImageStudioSceneIndex] = useState(() =>
+    Math.max(0, project.scenes.findIndex((scene) => scene.id === selectedSceneId))
+  );
   const [imageStudioPrompts, setImageStudioPrompts] = useState<Record<string, string>>({});
   const [imageStudioSelectedRefs, setImageStudioSelectedRefs] = useState<Record<string, string[]>>({});
+  const [imageStudioUseReferences, setImageStudioUseReferences] = useState<Record<string, boolean>>({});
   const [imageModel, setImageModel] = useState("gpt-image-2");
   const [imageStyle, setImageStyle] = useState(IMAGE_STYLE_OPTIONS[0].value);
   const [imageSize, setImageSize] = useState(IMAGE_SIZE_OPTIONS[1].value);
+  const [imageQuality, setImageQuality] = useState<"low" | "medium" | "high">("low");
   const [imageQueue, setImageQueue] = useState<ImageQueueItem[]>([]);
   const [fullPreviewImagePath, setFullPreviewImagePath] = useState<string | null>(null);
+  const [animationEditorType, setAnimationEditorType] = useState<
+    "procedural" | "aiFrames" | null
+  >(null);
   const [storyPlan, setStoryPlan] = useState(() => readStoredText(AI_STORY_PLAN_KEY));
   const [storyLogicReport, setStoryLogicReport] = useState(() =>
     readStoredText(AI_STORY_REPORT_KEY)
@@ -398,8 +412,10 @@ export function AIAssistantModal({
   const stopRequestedRef = useRef(false);
   const imageQueueRunningRef = useRef(false);
   const imageQueueRef = useRef<ImageQueueItem[]>([]);
+  const activeImageRequestIdRef = useRef<string | null>(null);
   const latestProjectRef = useRef(project);
   const approvedStoryBlueprintRef = useRef<StoryBlueprint | null>(null);
+  const projectGenerationStartedRef = useRef(false);
 
   const canChat = Boolean(window.storyLife?.aiChat);
   const canGenerateProject = Boolean(window.storyLife?.aiGenerateProject);
@@ -424,6 +440,24 @@ export function AIAssistantModal({
   useEffect(() => {
     latestProjectRef.current = project;
   }, [project]);
+
+  useEffect(() => {
+    const scene = project.scenes[imageStudioSceneIndex];
+    if (!scene || project.characterReferences.length === 0) {
+      return;
+    }
+    setImageStudioSelectedRefs((current) => {
+      if (Object.prototype.hasOwnProperty.call(current, scene.id)) {
+        return current;
+      }
+      return {
+        ...current,
+        [scene.id]: project.characterReferences
+          .slice(0, 3)
+          .map((reference) => reference.id)
+      };
+    });
+  }, [imageStudioSceneIndex, project.characterReferences, project.scenes]);
 
   useEffect(() => {
     imageQueueRef.current = imageQueue;
@@ -570,6 +604,9 @@ export function AIAssistantModal({
       return;
     }
 
+    const requestId = createRequestId();
+    stopRequestedRef.current = false;
+    activeImageRequestIdRef.current = requestId;
     setWorking(true);
     setStage("sending");
     try {
@@ -967,6 +1004,7 @@ export function AIAssistantModal({
     setGeneratedProjectJson("");
     localStorage.removeItem(AI_PROJECT_WORKING_DRAFT_KEY);
     approvedStoryBlueprintRef.current = null;
+    projectGenerationStartedRef.current = false;
     stopRequestedRef.current = false;
     setWorking(true);
     setStage("sending");
@@ -1032,6 +1070,7 @@ export function AIAssistantModal({
         });
       }
       setStage("thinking");
+      projectGenerationStartedRef.current = true;
       const result = await window.storyLife.aiGenerateProject({
         storyText: initialPrompt,
         currentProjectJson,
@@ -1155,7 +1194,40 @@ export function AIAssistantModal({
         });
       }
     } catch (error) {
-      const recoveredProject = recoverProjectFromLiveDraft() ?? readWorkingProjectDraft();
+      const approvedBlueprint = approvedStoryBlueprintRef.current;
+      if (
+        approvedBlueprint &&
+        (!requestedSceneCount || approvedBlueprint.scenes.length >= requestedSceneCount)
+      ) {
+        try {
+          const recoveredSource = readWorkingProjectDraft() ?? {
+            ...createDefaultProject(),
+            projectName: approvedBlueprint.title,
+            storyStyles: selectedStoryStyles,
+            scenes: []
+          };
+          const compiledProject = finalizeProjectFromBlueprint(
+            recoveredSource,
+            approvedBlueprint
+          );
+          saveHiddenProjectDraft(compiledProject, plannedPromptForRecovery, prompt);
+          setStage("done");
+          appendMessage({
+            role: "assistant",
+            text: `JSON draft recovered directly from the approved story plan: ${compiledProject.scenes.length} scenes, with every choice and link restored.`
+          });
+          return;
+        } catch (compileError) {
+          appendMessage({
+            role: "system",
+            text: `Direct blueprint recovery failed: ${getErrorMessage(compileError)}`
+          });
+        }
+      }
+
+      const recoveredProject = projectGenerationStartedRef.current
+        ? recoverProjectFromLiveDraft() ?? readWorkingProjectDraft()
+        : readWorkingProjectDraft();
       if (recoveredProject) {
         const alignedRecoveredProject = approvedStoryBlueprintRef.current
           ? alignProjectScenesToBlueprint(
@@ -1272,7 +1344,7 @@ export function AIAssistantModal({
     let previousProblems: string[] = [];
     if (
       requestedSceneCount &&
-      requestedSceneCount > ONE_SHOT_PROJECT_SCENE_LIMIT &&
+      requestedSceneCount >= 3 &&
       window.storyLife.aiPlanStoryArchitecture &&
       window.storyLife.aiPlanStoryChunk
     ) {
@@ -1396,199 +1468,180 @@ export function AIAssistantModal({
     requestId: string,
     stylePrompt: string
   ): Promise<StoryBlueprint> {
-    let fullPlanProblems: string[] = [];
+    let architecture: Record<string, unknown> | null = null;
+    let architectureJson = "";
+    let mapProblems: string[] = [];
 
-    for (let planPass = 1; planPass <= STORY_ARCHITECTURE_PASSES; planPass += 1) {
+    for (let attempt = 1; attempt <= STORY_MAP_ATTEMPTS; attempt += 1) {
+      setLiveProjectStatus(`Writing the story map (${attempt}/${STORY_MAP_ATTEMPTS})...`);
+      liveProjectDraftRef.current = "";
+      setLiveProjectDraft("");
       try {
-        setLiveProjectStatus(
-          `Designing compact story architecture (${planPass}/${STORY_ARCHITECTURE_PASSES})...`
-        );
-        liveProjectDraftRef.current = "";
-        setLiveProjectDraft("");
         const architectureResult = await window.storyLife!.aiPlanStoryArchitecture({
           storyText: prompt,
           targetSceneCount,
           storyMemory,
           chatHistory: messages.slice(-16),
           stylePrompt,
-          correctionProblems: fullPlanProblems,
+          correctionProblems: mapProblems,
           requestId
         });
-        const architectureJson = extractJsonObjectFromText(
+        const rawArchitectureJson = extractJsonObjectFromText(
           architectureResult.architectureText
         );
-        const architecture = JSON.parse(architectureJson) as unknown;
-        if (!isPlainObject(architecture)) {
-          throw new Error("Story architecture is not a JSON object.");
+        const parsedArchitecture = JSON.parse(rawArchitectureJson) as unknown;
+        if (!isPlainObject(parsedArchitecture)) {
+          throw new Error("The story map is not a JSON object.");
         }
-        const title = readRequiredArchitectureText(architecture, "title");
-        const premise = readRequiredArchitectureText(architecture, "premise");
-        const tone = readRequiredArchitectureText(architecture, "tone");
-        const completeSceneOrder = readArchitectureSceneKeys(
-          architecture,
+        const fitted = fitStoryArchitectureToSceneCount(
+          parsedArchitecture,
           targetSceneCount
         );
-        let blueprint: SemanticStoryBlueprint = { title, premise, tone, scenes: [] };
-        appendMessage({
-          role: "system",
-          text: `Story architecture ready. Writing ${targetSceneCount} meaning-based scenes in blocks of ${LARGE_PROJECT_CHUNK_SIZE}.`
-        });
-
-        while (blueprint.scenes.length < targetSceneCount) {
-          if (stopRequestedRef.current) {
-            throw new Error("Stopped by user.");
-          }
-          const startNumber = blueprint.scenes.length + 1;
-          const chunkSize = Math.min(
-            LARGE_PROJECT_CHUNK_SIZE,
-            targetSceneCount - blueprint.scenes.length
-          );
-          const requiredSceneKeys = completeSceneOrder.slice(
-            startNumber - 1,
-            startNumber - 1 + chunkSize
-          );
-          let chunkProblems: string[] = [];
-          let acceptedScenes: SemanticStoryScene[] | null = null;
-
-          for (
-            let chunkAttempt = 1;
-            chunkAttempt <= STORY_BLUEPRINT_CHUNK_ATTEMPTS;
-            chunkAttempt += 1
-          ) {
-            setLiveProjectStatus(
-              `Planning scenes ${startNumber}-${startNumber + chunkSize - 1} (${blueprint.scenes.length}/${targetSceneCount} approved)...`
-            );
-            liveProjectDraftRef.current = "";
-            setLiveProjectDraft("");
-            try {
-              const chunkResult = await window.storyLife!.aiPlanStoryChunk({
-                storyText: prompt,
-                targetSceneCount,
-                architectureJson,
-                approvedBlueprintJson: JSON.stringify(blueprint, null, 2),
-                requiredSceneKeys,
-                correctionProblems: chunkProblems,
-                stylePrompt,
-                requestId
-              });
-              const rawChunk = JSON.parse(
-                extractJsonObjectFromText(chunkResult.chunkText)
-              ) as unknown;
-              const validation = validateSemanticStoryBlueprintChunk(
-                blueprint,
-                rawChunk,
-                requiredSceneKeys,
-                completeSceneOrder
-              );
-              chunkProblems = validation.problems;
-              if (validation.problems.length === 0) {
-                if (window.storyLife?.aiReviewStoryChunk) {
-                  setLiveProjectStatus(
-                    `Story editor is checking scenes ${startNumber}-${startNumber + chunkSize - 1}...`
-                  );
-                  const editorResult = await window.storyLife.aiReviewStoryChunk({
-                    architectureJson,
-                    approvedBlueprintJson: JSON.stringify(blueprint, null, 2),
-                    chunkJson: JSON.stringify({ scenes: validation.scenes }, null, 2),
-                    storyRequest: prompt,
-                    requestId
-                  });
-                  if (!editorResult.review.passes) {
-                    chunkProblems = [
-                      ...editorResult.review.problems,
-                      editorResult.review.rewriteInstruction
-                    ].filter(Boolean);
-                  } else {
-                    acceptedScenes = validation.scenes;
-                    break;
-                  }
-                } else {
-                  acceptedScenes = validation.scenes;
-                  break;
-                }
-              }
-            } catch (error) {
-              chunkProblems = [
-                `Chunk JSON or planning failed: ${getErrorMessage(error)}`
-              ];
-            }
-
-            appendMessage({
-              role: "system",
-              text: `Blueprint scenes ${startNumber}-${startNumber + chunkSize - 1}, attempt ${chunkAttempt}, rejected: ${chunkProblems.slice(0, 5).join("; ")}`
-            });
-          }
-
-          if (!acceptedScenes) {
-            throw new Error(
-              `AI failed to plan scenes ${startNumber}-${startNumber + chunkSize - 1}: ${chunkProblems.slice(0, 8).join("; ")}`
-            );
-          }
-
-          blueprint = {
-            ...blueprint,
-            scenes: [...blueprint.scenes, ...acceptedScenes]
-          };
-          const partialBlueprintJson = JSON.stringify(blueprint, null, 2);
-          setStoryPlan(partialBlueprintJson);
-          setLiveProjectDraft(partialBlueprintJson.slice(-40000));
-          setLiveProjectEvents((events) => [
-            ...events.slice(-11),
-            `Blueprint block approved: ${blueprint.scenes.length}/${targetSceneCount} scenes.`
-          ]);
-        }
-
-        const fullValidation = validateSemanticStoryBlueprint(
-          blueprint,
-          targetSceneCount
-        );
-        if (!fullValidation.blueprint || fullValidation.problems.length > 0) {
-          fullPlanProblems = fullValidation.problems;
-          throw new Error(
-            `Assembled blueprint failed its complete graph check: ${fullPlanProblems.slice(0, 8).join("; ")}`
-          );
-        }
-
-        const candidateBlueprint = compileSemanticStoryBlueprint(
-          fullValidation.blueprint
-        );
-        if (window.storyLife?.aiReviewStoryBlueprint) {
-          setLiveProjectStatus("Reviewing the assembled blueprint as one story...");
-          const reviewResult = await window.storyLife.aiReviewStoryBlueprint({
-            blueprintJson: JSON.stringify(candidateBlueprint, null, 2),
-            storyRequest: prompt,
-            requestId
+        architecture = fitted.architecture;
+        architectureJson = JSON.stringify(architecture, null, 2);
+        readRequiredArchitectureText(architecture, "title");
+        readRequiredArchitectureText(architecture, "premise");
+        readRequiredArchitectureText(architecture, "tone");
+        readArchitectureSceneKeys(architecture, targetSceneCount);
+        if (fitted.changed) {
+          appendMessage({
+            role: "system",
+            text: `AI suggested ${fitted.originalSceneCount} story beats. The Builder fitted them to exactly ${targetSceneCount} connected scenes without restarting the story.`
           });
-          if (!reviewResult.review.passes) {
-            fullPlanProblems = [
-              ...reviewResult.review.problems,
-              reviewResult.review.rewriteInstruction
-            ].filter(Boolean);
-            throw new Error(
-              `Assembled story failed narrative review: ${fullPlanProblems.slice(0, 8).join("; ")}`
-            );
-          }
         }
-
-        return candidateBlueprint;
+        break;
       } catch (error) {
         if (stopRequestedRef.current) {
           throw error;
         }
-        fullPlanProblems = [
-          getErrorMessage(error),
-          ...fullPlanProblems
-        ].filter(Boolean).slice(0, 12);
+        mapProblems = [getErrorMessage(error)].filter(Boolean);
         appendMessage({
           role: "system",
-          text: `Chunked story plan pass ${planPass} was rejected: ${fullPlanProblems.slice(0, 6).join("; ")}`
+          text: `Story map attempt ${attempt} could not be read: ${mapProblems.join("; ")}`
         });
       }
     }
 
-    throw new Error(
-      `AI failed to assemble a coherent story plan in small blocks: ${fullPlanProblems.slice(0, 8).join("; ")}`
-    );
+    if (!architecture) {
+      throw new Error(`AI could not return a readable story map: ${mapProblems.join("; ")}`);
+    }
+
+    const title = readRequiredArchitectureText(architecture, "title");
+    const premise = readRequiredArchitectureText(architecture, "premise");
+    const tone = readRequiredArchitectureText(architecture, "tone");
+    const completeSceneOrder = readArchitectureSceneKeys(architecture, targetSceneCount);
+    let blueprint: SemanticStoryBlueprint = { title, premise, tone, scenes: [] };
+    appendMessage({
+      role: "system",
+      text: `Story map locked to ${targetSceneCount} scenes. Writing the actual story in blocks of ${LARGE_PROJECT_CHUNK_SIZE}.`
+    });
+
+    while (blueprint.scenes.length < targetSceneCount) {
+      if (stopRequestedRef.current) throw new Error("Stopped by user.");
+      const startNumber = blueprint.scenes.length + 1;
+      const remainingSceneCount = targetSceneCount - blueprint.scenes.length;
+      const candidateChunkSizes = [
+        Math.min(LARGE_PROJECT_CHUNK_SIZE, remainingSceneCount),
+        Math.min(3, remainingSceneCount),
+        1
+      ].filter((size, index, sizes) => size > 0 && sizes.indexOf(size) === index);
+      let chunkProblems: string[] = [];
+      let acceptedScenes: SemanticStoryScene[] | null = null;
+
+      for (const chunkSize of candidateChunkSizes) {
+        const requiredSceneKeys = completeSceneOrder.slice(
+          startNumber - 1,
+          startNumber - 1 + chunkSize
+        );
+        for (let attempt = 1; attempt <= STORY_BLUEPRINT_CHUNK_ATTEMPTS; attempt += 1) {
+          setLiveProjectStatus(
+            `Writing scenes ${startNumber}-${startNumber + chunkSize - 1} (${blueprint.scenes.length}/${targetSceneCount} ready)...`
+          );
+          liveProjectDraftRef.current = "";
+          setLiveProjectDraft("");
+          try {
+            const chunkResult = await window.storyLife!.aiPlanStoryChunk({
+              storyText: prompt,
+              targetSceneCount,
+              architectureJson,
+              approvedBlueprintJson: JSON.stringify(blueprint, null, 2),
+              requiredSceneKeys,
+              correctionProblems: chunkProblems,
+              stylePrompt,
+              requestId
+            });
+            const rawChunk = JSON.parse(
+              extractJsonObjectFromText(chunkResult.chunkText)
+            ) as unknown;
+            const validation = validateSemanticStoryBlueprintChunk(
+              blueprint,
+              rawChunk,
+              requiredSceneKeys,
+              completeSceneOrder
+            );
+            chunkProblems = [
+              ...validation.problems,
+              ...findArchitectureContractProblems(architecture, validation.scenes)
+            ];
+            if (chunkProblems.length === 0) {
+              if (window.storyLife?.aiReviewStoryChunk) {
+                setLiveProjectStatus(
+                  `Editing story logic in scenes ${startNumber}-${startNumber + chunkSize - 1}...`
+                );
+                const reviewResult = await window.storyLife.aiReviewStoryChunk({
+                  architectureJson,
+                  approvedBlueprintJson: JSON.stringify(blueprint, null, 2),
+                  chunkJson: JSON.stringify({ scenes: validation.scenes }, null, 2),
+                  storyRequest: prompt,
+                  requestId
+                });
+                if (!reviewResult.review.passes) {
+                  chunkProblems = [
+                    ...reviewResult.review.problems,
+                    reviewResult.review.rewriteInstruction
+                      ? `Rewrite instruction: ${reviewResult.review.rewriteInstruction}`
+                      : ""
+                  ].filter(Boolean);
+                  continue;
+                }
+              }
+              acceptedScenes = validation.scenes;
+              break;
+            }
+          } catch (error) {
+            chunkProblems = [`Block JSON failed: ${getErrorMessage(error)}`];
+          }
+          appendMessage({
+            role: "system",
+            text: `Scenes ${startNumber}-${startNumber + chunkSize - 1}, attempt ${attempt}, need a local rewrite: ${chunkProblems.slice(0, 5).join("; ")}`
+          });
+        }
+        if (acceptedScenes) break;
+      }
+
+      if (!acceptedScenes) {
+        throw new Error(
+          `AI could not write scene ${startNumber} correctly: ${chunkProblems.slice(0, 6).join("; ")}`
+        );
+      }
+
+      blueprint = { ...blueprint, scenes: [...blueprint.scenes, ...acceptedScenes] };
+      const partialBlueprintJson = JSON.stringify(blueprint, null, 2);
+      setStoryPlan(partialBlueprintJson);
+      setLiveProjectDraft(partialBlueprintJson.slice(-40000));
+      setLiveProjectEvents((events) => [
+        ...events.slice(-11),
+        `Story block saved: ${blueprint.scenes.length}/${targetSceneCount} scenes.`
+      ]);
+    }
+
+    const fullValidation = validateSemanticStoryBlueprint(blueprint, targetSceneCount);
+    if (!fullValidation.blueprint || fullValidation.problems.length > 0) {
+      throw new Error(
+        `The assembled story has technical link errors: ${fullValidation.problems.slice(0, 8).join("; ")}`
+      );
+    }
+    return compileSemanticStoryBlueprint(fullValidation.blueprint);
   }
 
   async function reviewAndFixStoryBlock(
@@ -1816,6 +1869,13 @@ export function AIAssistantModal({
     stylePrompt: string
   ): Promise<StoryProject> {
     let nextProject = startProject;
+    const approvedBlueprint = approvedStoryBlueprintRef.current;
+    if (
+      approvedBlueprint &&
+      (!requestedSceneCount || approvedBlueprint.scenes.length >= requestedSceneCount)
+    ) {
+      return finalizeProjectFromBlueprint(nextProject, approvedBlueprint);
+    }
     if (
       !requestedSceneCount ||
       nextProject.scenes.length >= requestedSceneCount ||
@@ -2078,6 +2138,11 @@ export function AIAssistantModal({
     if (activeRequestId && window.storyLife?.aiCancel) {
       await window.storyLife.aiCancel(activeRequestId).catch(() => undefined);
     }
+    if (activeImageRequestIdRef.current && window.storyLife?.aiCancel) {
+      await window.storyLife
+        .aiCancel(activeImageRequestIdRef.current)
+        .catch(() => undefined);
+    }
     appendMessage({ role: "system", text: "Stopped by user." });
     setWorking(false);
     setActiveRequestId(null);
@@ -2252,10 +2317,13 @@ export function AIAssistantModal({
         );
         const result = await window.storyLife.aiEditProject({
           instruction: [
-            "Fix this batch of hidden StoryLife JSON draft problems so the project can pass the final quality check.",
-            "Do not replace the story, rename stable scene ids, use parameters, or load anything into the Builder.",
-            "For fake choices that share one immediate target: make the choices lead to distinct logical target scenes. If there is truly only one next event, keep one honest choice instead of several fake choices.",
-            "Make each changed target scene logically continue the exact choice text. Preserve unrelated valid scenes.",
+            "Repair the listed narrative and branching problems in existing scenes.",
+            "Return updatedScenes only. Do not return newScenes. Do not add, delete, or rename any scene.",
+            "Keep sceneType, flags, parameters, and the number of choices unchanged.",
+            "You may rewrite titles, scene text, choice button text, and targetNodeId only when a listed problem genuinely requires a different existing forward target.",
+            "Any changed targetNodeId must name an existing later scene. Keep its one outcome synchronized to the same target. Choices in one scene must keep different targets.",
+            "Distribute consequences through the route instead of making every earlier choice irrelevant until one final moral switch.",
+            "Preserve every unrelated scene exactly.",
             `PROBLEM BATCH ${batchIndex + 1}/${problemBatches.length}:`,
             ...problems.map((problem) => `- ${problem}`),
             "APPROVED STORY PLAN:",
@@ -2266,7 +2334,9 @@ export function AIAssistantModal({
           requestId
         });
         const patch = JSON.parse(result.patchJson) as AIProjectPatch;
-        fixedDraft = mergeProjectPatch(fixedDraft, patch);
+        fixedDraft = applyNarrativeRepairPatch(fixedDraft, patch, {
+          allowGraphChanges: true
+        });
         saveWorkingProjectDraft(fixedDraft, storyPlan, storyText);
       }
       saveHiddenProjectDraft(fixedDraft, storyPlan, storyText);
@@ -2349,20 +2419,29 @@ export function AIAssistantModal({
       return;
     }
 
+    const requestId = createRequestId();
+    activeImageRequestIdRef.current = requestId;
     setWorking(true);
     setStage("thinking");
     try {
       const result = await window.storyLife.aiGenerateSceneImage({
-        sceneJson: JSON.stringify(selectedScene, null, 2),
         prompt: createFinalImagePrompt(imagePrompt, imageStyle, imageSize),
         imageModel,
-        imageSize
+        imageSize,
+        imageQuality,
+        requestId
       });
+      if (stopRequestedRef.current) {
+        return;
+      }
       const nextProject: StoryProject = {
         ...project,
         scenes: project.scenes.map((scene) =>
           scene.id === selectedScene.id
-            ? { ...scene, imagePath: result.filePath }
+            ? applySceneVisual(scene, result.filePath, "image", {
+                name: `Generated ${scene.imageVariants.length + 1}`,
+                prompt: imagePrompt
+              })
             : scene
         )
       };
@@ -2373,9 +2452,14 @@ export function AIAssistantModal({
         text: `Image generated and applied to "${selectedScene.title || selectedScene.id}".`
       });
     } catch (error) {
-      setStage("error");
-      appendMessage({ role: "assistant", text: getErrorMessage(error) });
+      if (!stopRequestedRef.current) {
+        setStage("error");
+        appendMessage({ role: "assistant", text: getErrorMessage(error) });
+      }
     } finally {
+      if (activeImageRequestIdRef.current === requestId) {
+        activeImageRequestIdRef.current = null;
+      }
       setWorking(false);
     }
   }
@@ -2393,6 +2477,10 @@ export function AIAssistantModal({
     if (result.canceled) {
       return;
     }
+    if (result.mediaType !== "image") {
+      setLiveProjectStatus("Character reference must be a picture, not a video.");
+      return;
+    }
 
     const fileName = result.filePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "Character";
     const reference = {
@@ -2404,18 +2492,6 @@ export function AIAssistantModal({
     onApplyProject({
       ...project,
       characterReferences: [...project.characterReferences, reference]
-    });
-  }
-
-  function updateCharacterReference(
-    referenceId: string,
-    patch: Partial<StoryProject["characterReferences"][number]>
-  ) {
-    onApplyProject({
-      ...project,
-      characterReferences: project.characterReferences.map((reference) =>
-        reference.id === referenceId ? { ...reference, ...patch } : reference
-      )
     });
   }
 
@@ -2466,11 +2542,12 @@ export function AIAssistantModal({
     }
 
     const prompt = createFinalImagePrompt(
-      imageStudioPrompts[scene.id]?.trim() || imagePrompt,
+      imageStudioPrompts[scene.id] ?? imagePrompt,
       imageStyle,
       imageSize
     );
-    const referenceIds = imageStudioSelectedRefs[scene.id] ?? [];
+    const useReferences = imageStudioUseReferences[scene.id] ?? true;
+    const referenceIds = useReferences ? imageStudioSelectedRefs[scene.id] ?? [] : [];
     const item: ImageQueueItem = {
       id: createRequestId(),
       sceneId: scene.id,
@@ -2478,6 +2555,7 @@ export function AIAssistantModal({
       referenceIds,
       imageModel,
       imageSize,
+      imageQuality,
       status: "queued"
     };
 
@@ -2544,19 +2622,29 @@ export function AIAssistantModal({
 
         setLiveProjectStatus(`Generating image for ${scene.title || scene.id}...`);
         try {
+          activeImageRequestIdRef.current = nextItem.id;
           const result = await window.storyLife.aiGenerateSceneImage({
-            sceneJson: JSON.stringify(scene, null, 2),
             prompt: nextItem.prompt,
             referenceImagePaths,
             imageModel: nextItem.imageModel,
-            imageSize: nextItem.imageSize
+            imageSize: nextItem.imageSize,
+            imageQuality: nextItem.imageQuality,
+            requestId: nextItem.id
           });
+
+          if (stopRequestedRef.current) {
+            markImageQueueItem(nextItem.id, "error", "Stopped by user.");
+            break;
+          }
 
           const updatedProject: StoryProject = {
             ...latestProjectRef.current,
             scenes: latestProjectRef.current.scenes.map((currentScene) =>
               currentScene.id === scene.id
-                ? { ...currentScene, imagePath: result.filePath }
+                ? applySceneVisual(currentScene, result.filePath, "image", {
+                    name: `Generated ${currentScene.imageVariants.length + 1}`,
+                    prompt: nextItem.prompt
+                  })
                 : currentScene
             )
           };
@@ -2569,10 +2657,16 @@ export function AIAssistantModal({
         } catch (error) {
           const message = getErrorMessage(error);
           markImageQueueItem(nextItem.id, "error", message);
-          appendMessage({
-            role: "assistant",
-            text: `Image generation failed for "${scene.title || scene.id}": ${message}`
-          });
+          if (!stopRequestedRef.current) {
+            appendMessage({
+              role: "assistant",
+              text: `Image generation failed for "${scene.title || scene.id}": ${message}`
+            });
+          }
+        } finally {
+          if (activeImageRequestIdRef.current === nextItem.id) {
+            activeImageRequestIdRef.current = null;
+          }
         }
       }
 
@@ -2629,6 +2723,36 @@ export function AIAssistantModal({
     setImageQueue(queue);
   }
 
+  async function stopImageQueue() {
+    stopRequestedRef.current = true;
+    setStage("stopped");
+    const requestId = activeImageRequestIdRef.current;
+    updateImageQueue(
+      imageQueueRef.current.map((item) =>
+        item.status === "running" || item.status === "queued"
+          ? {
+              ...item,
+              status: "error",
+              error: "Stopped by user.",
+              finishedAt: Date.now()
+            }
+          : item
+      )
+    );
+    if (requestId && window.storyLife?.aiCancel) {
+      await window.storyLife.aiCancel(requestId).catch(() => undefined);
+    }
+    setLiveProjectStatus("Image generation stopped.");
+  }
+
+  async function clearImageQueue() {
+    await stopImageQueue();
+    updateImageQueue([]);
+    setDrawnScenes(0);
+    setTargetScenes(0);
+    setLiveProjectStatus("Image queue cleared.");
+  }
+
   async function generateImagesForAllScenes() {
     if (!window.storyLife?.aiGenerateSceneImage || isWorking || project.scenes.length === 0) {
       return;
@@ -2651,13 +2775,17 @@ export function AIAssistantModal({
       id: createRequestId(),
       sceneId: scene.id,
       prompt: createFinalImagePrompt(
-        imagePrompt.trim() || scene.text,
+        imageStudioPrompts[scene.id] ?? imagePrompt,
         imageStyle,
         imageSize
       ),
-      referenceIds: imageStudioSelectedRefs[scene.id] ?? [],
+      referenceIds:
+        (imageStudioUseReferences[scene.id] ?? true)
+          ? imageStudioSelectedRefs[scene.id] ?? []
+          : [],
       imageModel,
       imageSize,
+      imageQuality,
       status: "queued" as const
     }));
 
@@ -2705,34 +2833,78 @@ export function AIAssistantModal({
     }
   }
 
+  function updateImageVariantAnimation(
+    sceneId: string,
+    variantId: string,
+    animation: SceneImageAnimation | null
+  ) {
+    const currentProject = latestProjectRef.current;
+    const nextProject: StoryProject = {
+      ...currentProject,
+      scenes: currentProject.scenes.map((scene) =>
+        scene.id === sceneId
+          ? {
+              ...scene,
+              imageVariants: scene.imageVariants.map((variant) =>
+                variant.id === variantId ? { ...variant, animation } : variant
+              )
+            }
+          : scene
+      )
+    };
+    latestProjectRef.current = nextProject;
+    onApplyProject(nextProject);
+  }
+
+  function selectImageVariant(sceneId: string, variantId: string) {
+    const currentProject = latestProjectRef.current;
+    const nextProject: StoryProject = {
+      ...currentProject,
+      scenes: currentProject.scenes.map((scene) =>
+        scene.id === sceneId ? activateSceneImageVariant(scene, variantId) : scene
+      )
+    };
+    latestProjectRef.current = nextProject;
+    onApplyProject(nextProject);
+  }
+
+  function setCurrentAnimationEnabled(enabled: boolean) {
+    if (!imageStudioScene || !imageStudioActiveVariant?.animation) return;
+    const animation = { ...imageStudioActiveVariant.animation, enabled };
+    updateImageVariantAnimation(imageStudioScene.id, imageStudioActiveVariant.id, animation);
+    if (enabled && imageStudioScene.imagePath !== imageStudioActiveVariant.imagePath) {
+      selectImageVariant(imageStudioScene.id, imageStudioActiveVariant.id);
+    }
+    setLiveProjectStatus(enabled ? "Animation enabled." : "Showing original picture. Animation was kept.");
+  }
+
   const imageStudioScene = project.scenes[imageStudioSceneIndex] ?? project.scenes[0] ?? null;
+  const imageStudioActiveVariant = imageStudioScene
+    ? getActiveSceneImageVariant(imageStudioScene)
+    : null;
   const imageStudioScenePrompt = imageStudioScene
-    ? imageStudioPrompts[imageStudioScene.id] ?? createDefaultSceneImagePrompt(imageStudioScene)
+    ? imageStudioPrompts[imageStudioScene.id] ?? imagePrompt
     : "";
   const imageStudioSelectedReferenceIds = imageStudioScene
     ? imageStudioSelectedRefs[imageStudioScene.id] ?? []
     : [];
+  const imageStudioReferencesEnabled = imageStudioScene
+    ? imageStudioUseReferences[imageStudioScene.id] ?? true
+    : true;
   const queuedImageCount = imageQueue.filter((item) => item.status === "queued").length;
   const runningImageCount = imageQueue.filter((item) => item.status === "running").length;
 
   return createPortal(
     <>
-    <aside
+    {SHOW_IMAGE_STUDIO_SIDEBAR && <aside
       className={`ai-drawer ${isImageStudioOpen ? "image-studio-open" : ""}`}
-      aria-label="AI Assistant panel"
-      style={{ width: `${width}px` }}
+      aria-label="Image Studio panel"
       onPointerDownCapture={focusEditableTarget}
     >
-      <span
-        className="ai-drawer-resize-handle"
-        role="separator"
-        aria-label="Resize AI panel"
-        onPointerDown={onResizeStart}
-      />
       <div className="ai-drawer-heading">
         <div>
-          <h2 id="ai-assistant-title">AI Assistant</h2>
-          <p>Works beside the project, not over it.</p>
+          <h2 id="ai-assistant-title">Image Studio</h2>
+          <p>Generate and manage scene artwork.</p>
         </div>
         <button type="button" onClick={onClose}>
           Close
@@ -2760,22 +2932,19 @@ export function AIAssistantModal({
           {draftValidation.status === "checking"
             ? liveProjectStatus || "Checking JSON structure and story logic..."
             : isWorking && targetScenes > 0
-              ? `Writing JSON scenes: ${drawnScenes}/${targetScenes}`
+              ? `Generating scene images: ${drawnScenes}/${targetScenes}`
             : getStageDescription(stage)}
         </p>
         <div className="ai-project-actions">
           <button type="button" onClick={stopAIWork} disabled={!isWorking}>
             Stop
           </button>
-          <button type="button" onClick={clearMemory} disabled={isWorking}>
-            Clear chat memory
-          </button>
         </div>
       </section>
 
       {(isWorking || liveProjectDraft.trim() !== "" || liveProjectEvents.length > 0) && (
         <section className="ai-live-output-card">
-          <h3>AI request monitor</h3>
+          <h3>Image generation monitor</h3>
           <p>{liveProjectStatus}</p>
           <div className="ai-live-stats">
             <span>Events: {liveProjectEventCount}</span>
@@ -2816,13 +2985,10 @@ export function AIAssistantModal({
           <button type="button" onClick={saveSettings} disabled={isWorking}>
             Save AI Settings
           </button>
-          <button type="button" onClick={testConnection} disabled={isWorking || !canChat}>
-            Test AI Connection
-          </button>
         </div>
       </section>
 
-      <section className="ai-project-card">
+      {SHOW_STORY_AI && <section className="ai-project-card">
         <details>
           <summary>Story Memory</summary>
           <p className="ai-muted-text">
@@ -2840,9 +3006,9 @@ export function AIAssistantModal({
             </button>
           </div>
         </details>
-      </section>
+      </section>}
 
-      <section className="ai-chat-card">
+      {SHOW_STORY_AI && <section className="ai-chat-card">
         <h3>Chat</h3>
         <div className="ai-chat-log" ref={chatLogRef} aria-live="polite">
           {messages.map((message, index) => (
@@ -2894,9 +3060,9 @@ export function AIAssistantModal({
                 </button>
               </div>
             </div>
-          </section>
+          </section>}
 
-      <section className="ai-project-card">
+      {SHOW_STORY_AI && <section className="ai-project-card">
         <h3>Write project JSON draft</h3>
         <textarea
           value={storyText}
@@ -3038,7 +3204,7 @@ export function AIAssistantModal({
             <pre>{storyLogicReport}</pre>
           </details>
         )}
-      </section>
+      </section>}
 
       <section className="ai-project-card">
         <h3>Generate image for selected scene</h3>
@@ -3117,9 +3283,9 @@ export function AIAssistantModal({
           />
         )}
       </section>
-    </aside>
+    </aside>}
     {isImageStudioOpen && imageStudioScene && (
-      <div className="modal-backdrop" role="presentation" onMouseDown={() => setImageStudioOpen(false)}>
+      <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
         <section
           className="ai-image-studio-modal"
           role="dialog"
@@ -3135,7 +3301,72 @@ export function AIAssistantModal({
               </p>
             </div>
             <div className="modal-heading-actions">
-              <button type="button" onClick={() => setImageStudioOpen(false)}>
+              <button
+                type="button"
+                disabled={
+                  imageStudioScene.imagePath.trim() === "" ||
+                  imageStudioScene.visualMediaType !== "image"
+                }
+                onClick={() => {
+                  void savePicture(
+                    imageStudioScene.imagePath,
+                    imageStudioScene.title || imageStudioScene.id
+                  )
+                    .then((result) => {
+                      if (result === "saved") setLiveProjectStatus("Picture saved.");
+                    })
+                    .catch((error) =>
+                      setLiveProjectStatus(
+                        error instanceof Error ? error.message : "Could not save picture."
+                      )
+                    );
+                }}
+              >
+                Save Picture
+              </button>
+              <button
+                type="button"
+                disabled={!imageStudioActiveVariant}
+                onClick={() => setAnimationEditorType("procedural")}
+              >
+                Animate
+              </button>
+              <button
+                type="button"
+                disabled={!imageStudioActiveVariant || !canGenerateSceneImage}
+                onClick={() => setAnimationEditorType("aiFrames")}
+              >
+                Animate with AI
+              </button>
+              {imageStudioActiveVariant?.animation && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentAnimationEnabled(
+                      !imageStudioActiveVariant.animation!.enabled
+                    )}
+                  >
+                    {imageStudioActiveVariant.animation.enabled
+                      ? "Show Original"
+                      : "Use Animation"}
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-button"
+                    onClick={() => {
+                      updateImageVariantAnimation(
+                        imageStudioScene.id,
+                        imageStudioActiveVariant.id,
+                        null
+                      );
+                      setLiveProjectStatus("Animation deleted. Original picture was kept.");
+                    }}
+                  >
+                    Delete Animation
+                  </button>
+                </>
+              )}
+              <button type="button" onClick={onClose}>
                 Close
               </button>
             </div>
@@ -3143,6 +3374,13 @@ export function AIAssistantModal({
 
           <div className="ai-image-studio-body">
             <aside className="ai-character-reference-panel">
+              <section className="ai-image-scene-context" aria-label="Scene context">
+                <h3>Scene context</h3>
+                <strong>{imageStudioScene.title || imageStudioScene.id}</strong>
+                <div className="ai-image-scene-context-text">
+                  {imageStudioScene.text}
+                </div>
+              </section>
               <div className="ai-image-studio-section-heading">
                 <h3>Character References</h3>
                 <button type="button" onClick={addCharacterReference}>
@@ -3159,30 +3397,27 @@ export function AIAssistantModal({
                     <article
                       className={`ai-character-reference-card ${isSelected ? "selected" : ""}`}
                       key={reference.id}
+                      title={reference.name}
                     >
                       <button
                         type="button"
                         className="ai-reference-thumb-button"
                         onClick={() => toggleSceneReference(imageStudioScene.id, reference.id)}
+                        aria-pressed={isSelected}
+                        aria-label={`${isSelected ? "Disable" : "Enable"} reference ${reference.name}`}
                       >
-                        <AIImagePreview imagePath={reference.imagePath} />
+                        <span className="ai-image-thumbnail-frame ai-image-thumbnail-frame-contain">
+                          <AIImagePreview imagePath={reference.imagePath} />
+                        </span>
                       </button>
-                      <input
-                        value={reference.name}
-                        onChange={(event) =>
-                          updateCharacterReference(reference.id, { name: event.target.value })
-                        }
-                      />
-                      <textarea
-                        value={reference.notes}
-                        rows={2}
-                        placeholder="Notes"
-                        onChange={(event) =>
-                          updateCharacterReference(reference.id, { notes: event.target.value })
-                        }
-                      />
-                      <button type="button" onClick={() => removeCharacterReference(reference.id)}>
-                        Remove
+                      <button
+                        type="button"
+                        className="ai-reference-remove-button"
+                        onClick={() => removeCharacterReference(reference.id)}
+                        aria-label={`Remove reference ${reference.name}`}
+                        title={`Remove ${reference.name}`}
+                      >
+                        &times;
                       </button>
                     </article>
                   );
@@ -3212,25 +3447,77 @@ export function AIAssistantModal({
                   Next
                 </button>
               </div>
+              <label className="ai-image-scene-slider">
+                <span>
+                  Jump to scene
+                  <strong>{imageStudioSceneIndex + 1}/{project.scenes.length}</strong>
+                </span>
+                <input
+                  type="range"
+                  min={1}
+                  max={Math.max(1, project.scenes.length)}
+                  step={1}
+                  value={imageStudioSceneIndex + 1}
+                  aria-label="Jump to scene"
+                  onChange={(event) =>
+                    setImageStudioSceneIndex(Number(event.target.value) - 1)
+                  }
+                />
+              </label>
 
               <div className="ai-image-scene-preview">
-                {imageStudioScene.imagePath.trim() !== "" ? (
+                {imageStudioScene.visualMediaType === "video" &&
+                imageStudioScene.imagePath.trim() !== "" ? (
+                  <span>This scene uses video. Generating an image will replace it.</span>
+                ) : imageStudioScene.imagePath.trim() !== "" ? (
                   <button
                     type="button"
                     className="ai-image-scene-preview-button"
                     onClick={() => setFullPreviewImagePath(imageStudioScene.imagePath)}
                     aria-label="Open full image preview"
                   >
-                    <AIImagePreview imagePath={imageStudioScene.imagePath} />
+                    {imageStudioActiveVariant ? (
+                      <AnimatedSceneImage
+                        imagePath={imageStudioActiveVariant.imagePath}
+                        animation={imageStudioActiveVariant.animation}
+                        alt="Scene image"
+                      />
+                    ) : (
+                      <AIImagePreview imagePath={imageStudioScene.imagePath} />
+                    )}
                   </button>
                 ) : (
                   <span>No image generated yet</span>
                 )}
               </div>
-              <p className="ai-image-scene-text-only">
-                {imageStudioScene.text || "This scene has no text yet."}
-              </p>
-
+              {imageStudioScene.imageVariants.length > 0 && (
+                <section aria-label="Scene image variants">
+                  <div className="ai-image-studio-section-heading">
+                    <h3>Image variants</h3>
+                    <span>{imageStudioScene.imageVariants.length} saved</span>
+                  </div>
+                  <div className="ai-image-variant-strip">
+                    {imageStudioScene.imageVariants.map((variant, index) => (
+                      <button
+                        type="button"
+                        key={variant.id}
+                        className={`ai-image-variant-card ${
+                          imageStudioActiveVariant?.id === variant.id ? "active" : ""
+                        }`}
+                        title={`${variant.name}${variant.animation ? " · animated" : ""}`}
+                        onClick={() => selectImageVariant(imageStudioScene.id, variant.id)}
+                      >
+                        <span className="ai-image-thumbnail-frame ai-image-thumbnail-frame-cover">
+                          <AIImagePreview imagePath={variant.imagePath} />
+                        </span>
+                        <span className="ai-image-variant-label">
+                          {variant.name || `Image ${index + 1}`}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
               <label className="field-label">
                 Image model
                 <select value={imageModel} onChange={(event) => setImageModel(event.target.value)}>
@@ -3249,6 +3536,19 @@ export function AIAssistantModal({
                       {option.label}
                     </option>
                   ))}
+                </select>
+              </label>
+              <label className="field-label">
+                Generation quality
+                <select
+                  value={imageQuality}
+                  onChange={(event) => setImageQuality(
+                    event.target.value as "low" | "medium" | "high"
+                  )}
+                >
+                  <option value="low">Low · cheaper, best for animation</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High · larger and more expensive</option>
                 </select>
               </label>
               <label className="field-label">
@@ -3277,12 +3577,28 @@ export function AIAssistantModal({
               </label>
 
               <div className="ai-selected-reference-row">
-                <span>Selected references: {imageStudioSelectedReferenceIds.length}/3</span>
+                <span>
+                  Selected references: {imageStudioSelectedReferenceIds.length}/3
+                  {!imageStudioReferencesEnabled ? " (not applied)" : ""}
+                </span>
                 {imageStudioSelectedReferenceIds.map((referenceId) => {
                   const reference = project.characterReferences.find((item) => item.id === referenceId);
                   return reference ? <strong key={reference.id}>{reference.name}</strong> : null;
                 })}
               </div>
+              <label className="checkbox-control ai-apply-reference-toggle">
+                <input
+                  type="checkbox"
+                  checked={imageStudioReferencesEnabled}
+                  onChange={(event) =>
+                    setImageStudioUseReferences((current) => ({
+                      ...current,
+                      [imageStudioScene.id]: event.target.checked
+                    }))
+                  }
+                />
+                <span>Apply references</span>
+              </label>
 
               <div className="ai-project-actions">
                 <button
@@ -3308,7 +3624,26 @@ export function AIAssistantModal({
               </div>
 
               <section className="ai-image-queue-panel">
-                <h3>Queue</h3>
+                <div className="ai-image-queue-heading">
+                  <h3>Queue</h3>
+                  <div className="ai-image-queue-actions">
+                    <button
+                      type="button"
+                      className="danger-button"
+                      onClick={() => void stopImageQueue()}
+                      disabled={runningImageCount === 0 && queuedImageCount === 0}
+                    >
+                      Stop generation
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void clearImageQueue()}
+                      disabled={imageQueue.length === 0}
+                    >
+                      Clear queue
+                    </button>
+                  </div>
+                </div>
                 <ImageQueueProgressPanel
                   imageQueue={imageQueue}
                   scenes={project.scenes}
@@ -3319,6 +3654,30 @@ export function AIAssistantModal({
           </div>
         </section>
       </div>
+    )}
+    {animationEditorType && imageStudioScene && imageStudioActiveVariant && (
+      <ImageAnimationModal
+        initialType={animationEditorType}
+        sceneTitle={imageStudioScene.title || imageStudioScene.id}
+        variant={imageStudioActiveVariant}
+        imageModel={imageModel}
+        imageSize={imageSize}
+        onStatus={setLiveProjectStatus}
+        onClose={() => setAnimationEditorType(null)}
+        onApply={(animation) => {
+          updateImageVariantAnimation(
+            imageStudioScene.id,
+            imageStudioActiveVariant.id,
+            animation
+          );
+          setAnimationEditorType(null);
+          setLiveProjectStatus(
+            animation.type === "procedural"
+              ? "Local animation applied."
+              : "AI frame animation applied."
+          );
+        }}
+      />
     )}
     {fullPreviewImagePath && (
       <div className="modal-backdrop" role="presentation" onMouseDown={() => setFullPreviewImagePath(null)}>
@@ -3377,18 +3736,19 @@ function extractRequestedSceneCountLegacy(prompt: string): number | null {
   return counts.length > 0 ? Math.max(...counts) : null;
 }
 
-function createDefaultSceneImagePrompt(scene: StoryProject["scenes"][number]): string {
-  return scene.text || "";
-}
-
 function AIImagePreview({ imagePath }: { imagePath: string }) {
-  const [src, setSrc] = useState(imagePath);
+  const [src, setSrc] = useState(() => getAIImagePreviewSrc(imagePath));
 
   useEffect(() => {
     let isCurrent = true;
-    setSrc(imagePath);
+    setSrc(getAIImagePreviewSrc(imagePath));
 
-    if (!imagePath.trim() || !window.storyLife?.readImagePreview) {
+    if (
+      !imagePath.trim() ||
+      !isLocalAIImagePath(imagePath) ||
+      window.storyLife?.getMediaUrl ||
+      !window.storyLife?.readImagePreview
+    ) {
       return () => {
         isCurrent = false;
       };
@@ -3413,6 +3773,18 @@ function AIImagePreview({ imagePath }: { imagePath: string }) {
   }
 
   return <img className="ai-image-preview-image" src={toImageSrc(src)} alt="" />;
+}
+
+function getAIImagePreviewSrc(imagePath: string): string {
+  if (isLocalAIImagePath(imagePath) && window.storyLife?.getMediaUrl) {
+    return window.storyLife.getMediaUrl(imagePath);
+  }
+  return imagePath;
+}
+
+function isLocalAIImagePath(imagePath: string): boolean {
+  const trimmedPath = imagePath.trim();
+  return trimmedPath.startsWith("file://") || /^[a-zA-Z]:\\/.test(trimmedPath);
 }
 
 function ImageQueueProgressPanel({
@@ -3891,6 +4263,147 @@ function mergeProjectPatch(project: StoryProject, patch: AIProjectPatch): StoryP
   });
 }
 
+export function applyNarrativeRepairPatch(
+  project: StoryProject,
+  patch: AIProjectPatch,
+  options: { allowGraphChanges?: boolean } = {}
+): StoryProject {
+  const originalSceneMap = new Map(project.scenes.map((scene) => [scene.id, scene]));
+  const originalSceneIndex = new Map(project.scenes.map((scene, index) => [scene.id, index]));
+  const safeUpdatedScenes = (patch.updatedScenes ?? []).flatMap((candidateScene) => {
+    const originalScene = originalSceneMap.get(candidateScene.id);
+    if (!originalScene) return [];
+    const sourceIndex = originalSceneIndex.get(originalScene.id) ?? -1;
+    return [{
+      ...candidateScene,
+      id: originalScene.id,
+      sceneType: originalScene.sceneType,
+      choices: originalScene.choices.map((originalChoice, choiceIndex) => {
+        const candidateChoice = candidateScene.choices.find(
+          (choice) => choice.id === originalChoice.id
+        ) ?? candidateScene.choices[choiceIndex];
+        const candidateTarget = candidateChoice?.targetNodeId ?? "";
+        const targetIndex = originalSceneIndex.get(candidateTarget);
+        const canUseCandidateTarget = options.allowGraphChanges === true &&
+          targetIndex !== undefined && targetIndex > sourceIndex;
+        const targetNodeId = canUseCandidateTarget
+          ? candidateTarget
+          : originalChoice.targetNodeId;
+        return {
+          ...originalChoice,
+          text: candidateChoice?.text.trim() || originalChoice.text,
+          targetNodeId,
+          outcomes: originalChoice.outcomes.length > 0
+            ? originalChoice.outcomes.map((outcome, outcomeIndex) => ({
+                ...outcome,
+                targetSceneId: outcomeIndex === 0 ? targetNodeId : outcome.targetSceneId
+              }))
+            : [createChoiceOutcome(targetNodeId, 100, `outcome_${originalChoice.id}_1`)]
+        };
+      })
+    }];
+  });
+  const repaired = mergeProjectPatch(project, {
+    ...patch,
+    flags: undefined,
+    parameters: undefined,
+    newScenes: [],
+    updatedScenes: safeUpdatedScenes
+  });
+  const repairedSceneMap = new Map(repaired.scenes.map((scene) => [scene.id, scene]));
+  const candidateProject = migrateProject({
+    ...project,
+    projectName: repaired.projectName,
+    storyBible: repaired.storyBible,
+    scenes: project.scenes.map((originalScene) => {
+      const repairedScene = repairedSceneMap.get(originalScene.id) ?? originalScene;
+      return {
+        ...repairedScene,
+        id: originalScene.id,
+        sceneType: originalScene.sceneType,
+        choices: originalScene.choices.map((originalChoice, choiceIndex) => {
+          const repairedChoice = repairedScene.choices.find(
+            (choice) => choice.id === originalChoice.id
+          ) ?? repairedScene.choices[choiceIndex];
+          return {
+            ...(options.allowGraphChanges ? repairedChoice : originalChoice),
+            id: originalChoice.id,
+            text: repairedChoice?.text.trim() || originalChoice.text
+          };
+        })
+      };
+    })
+  });
+
+  if (options.allowGraphChanges && isSafeNarrativeGraph(candidateProject)) {
+    return candidateProject;
+  }
+
+  return migrateProject({
+    ...candidateProject,
+    scenes: candidateProject.scenes.map((scene) => {
+      const originalScene = originalSceneMap.get(scene.id)!;
+      return {
+        ...scene,
+        choices: originalScene.choices.map((originalChoice, choiceIndex) => {
+          const rewrittenChoice = scene.choices.find(
+            (choice) => choice.id === originalChoice.id
+          ) ?? scene.choices[choiceIndex];
+          return {
+            ...originalChoice,
+            text: rewrittenChoice?.text.trim() || originalChoice.text
+          };
+        })
+      };
+    })
+  });
+}
+
+function isSafeNarrativeGraph(project: StoryProject): boolean {
+  const sceneIndex = new Map(project.scenes.map((scene, index) => [scene.id, index]));
+  const sceneMap = new Map(project.scenes.map((scene) => [scene.id, scene]));
+
+  for (const [sourceIndex, scene] of project.scenes.entries()) {
+    if (scene.sceneType === "ending" && scene.choices.length > 0) return false;
+    if (scene.sceneType !== "ending" && scene.choices.length === 0) return false;
+    const targets = scene.choices.map((choice) => choice.targetNodeId);
+    if (new Set(targets).size !== targets.length) return false;
+    for (const choice of scene.choices) {
+      const targetIndex = sceneIndex.get(choice.targetNodeId);
+      if (targetIndex === undefined || targetIndex <= sourceIndex) return false;
+      if (choice.outcomes[0]?.targetSceneId !== choice.targetNodeId) return false;
+    }
+  }
+
+  const reachable = new Set<string>();
+  const queue = [project.startSceneId];
+  while (queue.length > 0) {
+    const sceneId = queue.shift();
+    if (!sceneId || reachable.has(sceneId)) continue;
+    reachable.add(sceneId);
+    queue.push(...(sceneMap.get(sceneId)?.choices.map((choice) => choice.targetNodeId) ?? []));
+  }
+  if (reachable.size !== project.scenes.length) return false;
+
+  const canReachEnding = new Set(
+    project.scenes.filter((scene) => scene.sceneType === "ending").map((scene) => scene.id)
+  );
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const scene of project.scenes) {
+      if (
+        !canReachEnding.has(scene.id) &&
+        scene.choices.some((choice) => canReachEnding.has(choice.targetNodeId))
+      ) {
+        canReachEnding.add(scene.id);
+        changed = true;
+      }
+    }
+  }
+  return project.scenes.every((scene) => canReachEnding.has(scene.id));
+}
+
 function stripAIParametersFromGeneratedProject(project: StoryProject): StoryProject {
   return {
     ...project,
@@ -3925,7 +4438,7 @@ function alignProjectScenesToBlueprint(
         id: blueprintScene.id,
         title: hasUsableGeneratedText(generatedScene?.title)
           ? generatedScene!.title
-          : blueprintScene.title,
+          : createBlueprintFallbackTitle(blueprintScene, index),
         text: hasUsableGeneratedText(generatedScene?.text)
           ? generatedScene!.text
           : createBlueprintFallbackText(blueprintScene),
@@ -3961,7 +4474,7 @@ function createBlueprintSceneTextPatch(
         id: blueprintScene.id,
         title: hasUsableGeneratedText(generatedScene?.title)
           ? generatedScene!.title
-          : blueprintScene.title,
+          : createBlueprintFallbackTitle(blueprintScene, index),
         text: hasUsableGeneratedText(generatedScene?.text)
           ? generatedScene!.text
           : createBlueprintFallbackText(blueprintScene),
@@ -4004,7 +4517,9 @@ export function finalizeProjectFromBlueprint(
     const blueprintScene = blueprint.scenes[sceneIndex];
     return {
       ...scene,
-      title: hasUsableGeneratedText(scene.title) ? scene.title : blueprintScene.title,
+      title: hasUsableGeneratedText(scene.title)
+        ? scene.title
+        : createBlueprintFallbackTitle(blueprintScene, sceneIndex),
       text: hasUsableGeneratedText(scene.text)
         ? scene.text
         : createBlueprintFallbackText(blueprintScene),
@@ -4055,10 +4570,35 @@ function hasUsableGeneratedText(value: string | undefined): value is string {
   );
 }
 
+function createBlueprintFallbackTitle(
+  scene: StoryBlueprintScene,
+  sceneIndex: number
+): string {
+  const source = [scene.title, scene.beat, scene.purpose]
+    .find((value) => hasUsableGeneratedText(value));
+  if (source) {
+    const compactTitle = source.trim().split(/\r?\n|(?<=[.!?])\s+/)[0].trim();
+    return compactTitle.slice(0, 120);
+  }
+  if (scene.semanticKey) {
+    return scene.semanticKey
+      .split("_")
+      .filter(Boolean)
+      .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+      .join(" ")
+      .slice(0, 120);
+  }
+  return `Story moment ${sceneIndex + 1}`;
+}
+
 function createBlueprintFallbackText(scene: StoryBlueprintScene): string {
-  return hasUsableGeneratedText(scene.text)
-    ? scene.text
-    : [scene.arrivalReason, scene.beat].filter(Boolean).join("\n\n");
+  if (hasUsableGeneratedText(scene.text)) {
+    return scene.text;
+  }
+  const fallbackText = [scene.arrivalReason, scene.beat, scene.purpose]
+    .filter((value) => hasUsableGeneratedText(value))
+    .join("\n\n");
+  return fallbackText || "The consequences of the previous choice unfold in this moment.";
 }
 
 function ensureGeneratedChoiceOutcomes(project: StoryProject): StoryProject {
@@ -4655,7 +5195,168 @@ function readArchitectureSceneKeys(
       `Story architecture key ${invalidKey || "(empty)"} must describe story meaning, not a scene number.`
     );
   }
+  const graphProblems = findArchitectureGraphProblems(architecture, targetSceneCount);
+  if (graphProblems.length > 0) {
+    throw new Error(`Story architecture graph is invalid: ${graphProblems.slice(0, 8).join("; ")}`);
+  }
   return keys;
+}
+
+function findArchitectureGraphProblems(
+  architecture: Record<string, unknown>,
+  targetSceneCount: number
+): string[] {
+  const rawScenePlan = Array.isArray(architecture.scenePlan) ? architecture.scenePlan : [];
+  const contracts = rawScenePlan.filter(isPlainObject).map((item) => ({
+    key: typeof item.key === "string" ? item.key.trim() : "",
+    branchId: typeof item.branchId === "string" ? item.branchId.trim() : "",
+    sceneType: item.sceneType === "ending" ? "ending" as const : "normal" as const,
+    outgoingTargets: Array.isArray(item.outgoingTargets)
+      ? item.outgoingTargets
+          .map((target) => typeof target === "string" ? target.trim() : "")
+          .filter(Boolean)
+      : []
+  }));
+  const problems: string[] = [];
+  if (contracts.length !== targetSceneCount) {
+    return [`scenePlan must contain exactly ${targetSceneCount} complete graph contracts.`];
+  }
+
+  const indexByKey = new Map(contracts.map((contract, index) => [contract.key, index]));
+  const contractByKey = new Map(contracts.map((contract) => [contract.key, contract]));
+  const incomingCount = new Map(contracts.map((contract) => [contract.key, 0]));
+  for (const [index, contract] of contracts.entries()) {
+    if (!contract.branchId) {
+      problems.push(`${contract.key || `contract ${index + 1}`}: branchId is required.`);
+    }
+    if (contract.sceneType === "normal" && contract.outgoingTargets.length === 0) {
+      problems.push(`${contract.key}: every normal scene contract needs at least one outgoing target.`);
+    }
+    if (contract.sceneType === "ending" && contract.outgoingTargets.length > 0) {
+      problems.push(`${contract.key}: an ending contract cannot have outgoing targets.`);
+    }
+    if (new Set(contract.outgoingTargets).size !== contract.outgoingTargets.length) {
+      problems.push(`${contract.key}: outgoing targets must be different choices.`);
+    }
+    for (const targetKey of contract.outgoingTargets) {
+      const targetIndex = indexByKey.get(targetKey);
+      if (targetIndex === undefined) {
+        problems.push(`${contract.key}: outgoing target ${targetKey} is missing from scenePlan.`);
+      } else if (targetIndex <= index) {
+        problems.push(`${contract.key}: outgoing target ${targetKey} must occur later in scenePlan.`);
+      } else {
+        incomingCount.set(targetKey, (incomingCount.get(targetKey) ?? 0) + 1);
+      }
+    }
+  }
+
+  const reachable = new Set<string>();
+  const queue = [contracts[0]?.key ?? ""];
+  while (queue.length > 0) {
+    const key = queue.shift();
+    if (!key || reachable.has(key)) continue;
+    reachable.add(key);
+    queue.push(...(contractByKey.get(key)?.outgoingTargets ?? []));
+  }
+  for (const contract of contracts) {
+    if (!reachable.has(contract.key)) {
+      problems.push(`${contract.key}: contract is unreachable from the opening scene.`);
+    }
+  }
+
+  const endingKeys = contracts
+    .filter((contract) => contract.sceneType === "ending")
+    .map((contract) => contract.key);
+  const minimumEndingCount = targetSceneCount >= 8 ? 2 : 1;
+  if (endingKeys.length < minimumEndingCount) {
+    problems.push(`The story needs at least ${minimumEndingCount} main ending scenes.`);
+  }
+  const minimumBranchingCount = targetSceneCount >= 8
+    ? Math.max(2, Math.floor(targetSceneCount / 8))
+    : 1;
+  const branchingCount = contracts.filter(
+    (contract) => contract.outgoingTargets.length > 1
+  ).length;
+  if (branchingCount < minimumBranchingCount) {
+    problems.push(
+      `The story needs at least ${minimumBranchingCount} real branching decisions; only ${branchingCount} were planned.`
+    );
+  }
+  if (
+    targetSceneCount >= 12 &&
+    !contracts.some((contract) => (incomingCount.get(contract.key) ?? 0) > 1)
+  ) {
+    problems.push("The graph never converges after branching; plan at least one compatible later convergence.");
+  }
+
+  const canReachEnding = new Set(endingKeys);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const contract of contracts) {
+      if (
+        !canReachEnding.has(contract.key) &&
+        contract.outgoingTargets.some((targetKey) => canReachEnding.has(targetKey))
+      ) {
+        canReachEnding.add(contract.key);
+        changed = true;
+      }
+    }
+  }
+  for (const contract of contracts) {
+    if (reachable.has(contract.key) && !canReachEnding.has(contract.key)) {
+      problems.push(`${contract.key}: no route from this contract reaches an ending.`);
+    }
+  }
+  return [...new Set(problems)].slice(0, 40);
+}
+
+function findArchitectureContractProblems(
+  architecture: Record<string, unknown>,
+  scenes: SemanticStoryScene[]
+): string[] {
+  const rawScenePlan = Array.isArray(architecture.scenePlan) ? architecture.scenePlan : [];
+  const contractByKey = new Map(
+    rawScenePlan.filter(isPlainObject).map((item) => [
+      typeof item.key === "string" ? item.key.trim() : "",
+      item
+    ])
+  );
+  const problems: string[] = [];
+  for (const scene of scenes) {
+    const contract = contractByKey.get(scene.key);
+    if (!contract) {
+      problems.push(`${scene.key}: no matching master architecture contract.`);
+      continue;
+    }
+    const expectedBranchId = typeof contract.branchId === "string"
+      ? contract.branchId.trim()
+      : "";
+    const expectedSceneType = contract.sceneType === "ending" ? "ending" : "normal";
+    const expectedTargets = Array.isArray(contract.outgoingTargets)
+      ? contract.outgoingTargets
+          .map((target) => typeof target === "string" ? target.trim() : "")
+          .filter(Boolean)
+      : [];
+    const actualTargets = scene.choices.map((choice) => choice.targetKey);
+    if (expectedBranchId && scene.branchId !== expectedBranchId) {
+      problems.push(
+        `${scene.key}: branchId must remain ${expectedBranchId}, not ${scene.branchId || "(empty)"}.`
+      );
+    }
+    if (scene.sceneType !== expectedSceneType) {
+      problems.push(`${scene.key}: sceneType must remain ${expectedSceneType}.`);
+    }
+    if (
+      actualTargets.length !== expectedTargets.length ||
+      actualTargets.some((targetKey) => !expectedTargets.includes(targetKey))
+    ) {
+      problems.push(
+        `${scene.key}: choices must use exactly the planned targets ${expectedTargets.join(", ") || "none"}.`
+      );
+    }
+  }
+  return problems;
 }
 
 function createProjectMemoryLibrary(

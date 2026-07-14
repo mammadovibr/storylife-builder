@@ -10,9 +10,15 @@
   "theme_color": "#f4eee4",
   "icons": [
     {
-      "src": "./icons/storylife.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "./icons/storylife-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/storylife-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

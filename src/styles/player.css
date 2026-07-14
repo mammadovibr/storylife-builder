@@ -1,6 +1,7 @@
 html,
 body,
 #root {
+  width: 100%;
   min-height: 100%;
 }
 
@@ -9,29 +10,76 @@ body {
   min-width: 0 !important;
   min-height: 100dvh;
   overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-padding-bottom: max(120px, calc(env(safe-area-inset-bottom, 0px) + 88px));
   background: #eee8dc;
 }
 
 .export-player-shell {
-  width: 100vw;
+  width: 100%;
   min-height: 100dvh;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
+  overflow-x: clip;
   padding: 0;
 }
 
-.export-phone-scale {
-  width: 390px;
-  min-height: 760px;
-  transform: scale(var(--storylife-export-scale, 1));
-  transform-origin: top center;
+.export-game-viewport {
+  width: 100%;
+  min-width: 0;
+  min-height: 100dvh;
+  overflow-x: clip;
+  padding-bottom: max(120px, calc(env(safe-area-inset-bottom, 0px) + 88px));
 }
 
-.export-phone-scale .scene-live-preview-phone {
-  height: 760px;
+.export-game-viewport .scene-export-viewport {
+  width: 100%;
+  min-width: 0;
+  min-height: max(760px, 100dvh);
+  height: max(760px, 100dvh);
   max-height: none;
-  overflow: visible;
+  margin: 0;
+  overflow-x: clip;
+  overflow-y: visible;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.export-game-viewport .scene-export-viewport .scene-preview-image-editable {
+  width: calc(100% - 28px);
+  max-width: 340px;
+  margin-left: 0;
+  translate: -50% 0;
+  overflow: hidden;
+}
+
+.export-game-viewport
+  .scene-export-viewport:is(
+    .scene-preview-layout-imageBackground,
+    .scene-preview-layout-dialogueStyle,
+    .scene-preview-layout-fullImageMoment
+  )
+  .scene-preview-image-editable {
+  width: 100%;
+  max-width: 100%;
+  translate: none;
+  overflow: hidden;
+}
+
+.export-game-viewport .scene-export-viewport .scene-preview-image,
+.export-game-viewport .scene-export-viewport .scene-image-animation-layer,
+.export-game-viewport .scene-export-viewport .scene-image-animation-layer > img {
+  max-width: 100%;
+}
+
+.export-game-viewport .scene-export-viewport .scene-preview-title-panel,
+.export-game-viewport .scene-export-viewport .scene-preview-text-panel,
+.export-game-viewport .scene-export-viewport .scene-mini-choice {
+  max-width: calc(100% - 28px);
+}
+
+.export-game-viewport .scene-export-viewport .exact-play-choice-button {
+  touch-action: manipulation;
 }
 
 .export-error {

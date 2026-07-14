@@ -1,5 +1,8 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import type { Choice, RuntimeState, Scene, StoryProject } from "../domain/project";
+import { getActiveSceneImageVariant, type Choice, type RuntimeState, type Scene, type StoryProject } from "../domain/project";
+import { getChoiceButtonFrameStyle } from "../utils/choiceButtonFrames";
+import { applyColorOpacity } from "../utils/colorOpacity";
+import { AnimatedSceneImage } from "./AnimatedSceneImage";
 
 interface VisibleChoice {
   choice: Choice;
@@ -11,29 +14,37 @@ interface ScenePhoneProps {
   scene: Scene;
   visibleChoices: VisibleChoice[];
   onChoice: (choice: Choice) => void;
+  displayMode?: "preview" | "export";
 }
 
 export function ScenePhone({
   project,
   scene,
   visibleChoices,
-  onChoice
+  onChoice,
+  displayMode = "preview"
 }: ScenePhoneProps) {
-  const imageSrc = useResolvedImageSrc(scene.imagePath);
+  const imageSrc = useResolvedMediaSrc(scene.imagePath);
   const effectiveLayout =
     scene.layoutType === "noImage" || scene.imagePath.trim() === ""
       ? "noImage"
       : scene.layoutType;
   const choicesAreTransparent =
     scene.style.choicesPanelTransparent || scene.style.choicesPanelOpacity <= 0;
+  const sceneTransition =
+    scene.style.sceneTransition === "project"
+      ? project.theme.sceneTransition
+      : scene.style.sceneTransition;
 
   return (
     <article
-      className={`play-card-exact scene-live-preview-phone scene-preview-layout-${effectiveLayout}`}
+      className={`play-card-exact scene-transition-${sceneTransition} scene-live-preview-phone scene-preview-layout-${effectiveLayout} ${
+        displayMode === "export" ? "scene-export-viewport" : ""
+      }`}
       key={scene.id}
       style={getExactPhoneStyle(scene, effectiveLayout, project, imageSrc)}
     >
-      <ExactSceneImage scene={scene} imageSrc={imageSrc} />
+      <ExactSceneVisual scene={scene} mediaSrc={imageSrc} />
       <ExactSceneTitle scene={scene} project={project} />
       <ExactSceneText scene={scene} project={project} />
       <div
@@ -57,21 +68,23 @@ export function ScenePhone({
                 onChoice(choice);
               }}
             >
-              {!isAvailable ? "Locked: " : ""}
-              {choice.text || "Continue"}
+              <span
+                className="choice-text-inner"
+                style={getChoiceTextOffsetStyle(scene)}
+              >
+                {!isAvailable ? "Locked: " : ""}
+                {choice.text}
+              </span>
             </button>
           ))}
-          {visibleChoices.length === 0 && (
-            <span className="empty-state">No choices from this scene.</span>
-          )}
         </div>
       </div>
     </article>
   );
 }
 
-function ExactSceneImage({ scene, imageSrc }: { scene: Scene; imageSrc: string }) {
-  if (scene.imagePath.trim() === "" || imageSrc.trim() === "" || scene.layoutType === "noImage") {
+function ExactSceneVisual({ scene, mediaSrc }: { scene: Scene; mediaSrc: string }) {
+  if (scene.imagePath.trim() === "" || mediaSrc.trim() === "" || scene.layoutType === "noImage") {
     return null;
   }
 
@@ -80,18 +93,32 @@ function ExactSceneImage({ scene, imageSrc }: { scene: Scene; imageSrc: string }
       className="scene-preview-editable scene-preview-image-editable"
       style={getExactImageFrameStyle(scene)}
     >
-      <img
-        className="scene-preview-image"
-        style={getExactImageStyle(scene)}
-        src={imageSrc}
-        alt=""
-        onError={(event) => {
-          event.currentTarget.style.visibility = "hidden";
-        }}
-        onLoad={(event) => {
-          event.currentTarget.style.visibility = "visible";
-        }}
-      />
+      {scene.visualMediaType === "video" ? (
+        <video
+          className="scene-preview-image"
+          style={getExactImageStyle(scene)}
+          src={mediaSrc}
+          autoPlay
+          muted={scene.soundPath.trim() !== ""}
+          playsInline
+          loop={scene.videoLoop}
+          preload="auto"
+        />
+      ) : (
+        <AnimatedSceneImage
+          imagePath={scene.imagePath}
+          animation={getActiveSceneImageVariant(scene)?.animation ?? null}
+          className="scene-preview-image"
+          style={getExactImageStyle(scene)}
+          alt=""
+          onError={(event) => {
+            event.currentTarget.style.visibility = "hidden";
+          }}
+          onLoad={(event) => {
+            event.currentTarget.style.visibility = "visible";
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -105,7 +132,7 @@ function ExactSceneText({
 }) {
   return (
     <section className="scene-preview-text-panel" style={getExactTextStyle(scene, project)}>
-      <p>{scene.text || "This scene has no text yet."}</p>
+      <p style={getTextContentOffsetStyle(scene, "text")}>{scene.text}</p>
     </section>
   );
 }
@@ -117,10 +144,19 @@ function ExactSceneTitle({
   scene: Scene;
   project: StoryProject;
 }) {
+  if (!scene.style.showSceneTitle) {
+    return null;
+  }
+
   return (
     <section className="scene-preview-title-panel" style={getExactTitleStyle(scene, project)}>
-      <h1 style={{ fontSize: `${scene.style.titleFontSize}px` }}>
-        {scene.title || "Untitled scene"}
+      <h1
+        style={{
+          fontSize: `${scene.style.titleFontSize}px`,
+          ...getTextContentOffsetStyle(scene, "title")
+        }}
+      >
+        {scene.title}
       </h1>
     </section>
   );
@@ -148,6 +184,7 @@ function getExactTextStyle(scene: Scene, project: StoryProject): CSSProperties {
       transparent: scene.style.textPanelTransparent || scene.style.textPanelOpacity <= 0,
       color: scene.style.textPanelColor || "#fffdfa",
       borderColor: scene.style.textBorderColor || "#a48d69",
+      borderEnabled: scene.style.textBorderEnabled,
       opacity: scene.style.textPanelOpacity
     }),
     color: scene.style.textColor || project.theme.textColor,
@@ -168,6 +205,7 @@ function getExactTitleStyle(scene: Scene, project: StoryProject): CSSProperties 
       transparent: scene.style.titlePanelTransparent || scene.style.titlePanelOpacity <= 0,
       color: scene.style.titlePanelColor || "#fffdfa",
       borderColor: scene.style.titleBorderColor || "#a48d69",
+      borderEnabled: scene.style.titleBorderEnabled,
       opacity: scene.style.titlePanelOpacity
     }),
     color: scene.style.titleTextColor || scene.style.textColor || project.theme.textColor,
@@ -239,6 +277,7 @@ function getExactChoicesStyle(scene: Scene): CSSProperties {
     ...getExactTransformStyle(scene, "choices"),
     color: scene.style.choicesTextColor || undefined,
     fontSize: `${scene.style.choicesFontSize}px`,
+    fontFamily: getSceneFontFamily(scene.style.choicesFontFamily),
     width:
       scene.style.choicesPanelWidth > 0 ? `${scene.style.choicesPanelWidth}px` : undefined,
     minHeight:
@@ -254,11 +293,34 @@ function getExactChoiceButtonStyle(scene: Scene): CSSProperties {
       transparent: scene.style.choicesPanelTransparent || scene.style.choicesPanelOpacity <= 0,
       color: scene.style.choicesPanelColor || "#fffaf1",
       borderColor: scene.style.choicesBorderColor || "#807058",
+      borderEnabled: scene.style.choicesBorderEnabled,
       opacity: scene.style.choicesPanelOpacity
     }),
     color: scene.style.choicesTextColor || undefined,
     fontSize: `${scene.style.choicesFontSize}px`,
-    padding: `${scene.style.choicesPaddingTop}px ${scene.style.choicesPaddingSide}px`
+    fontFamily: getSceneFontFamily(scene.style.choicesFontFamily),
+    padding: `${scene.style.choicesPaddingTop}px ${scene.style.choicesPaddingSide}px`,
+    ...getChoiceButtonFrameStyle(
+      scene.style.choicesFrameStyle,
+      scene.style.choicesPanelTransparent ? 0 : scene.style.choicesPanelOpacity
+    )
+  };
+}
+
+function getTextContentOffsetStyle(
+  scene: Scene,
+  target: "title" | "text"
+): CSSProperties {
+  const x = target === "title" ? scene.style.titleTextOffsetX : scene.style.sceneTextOffsetX;
+  const y = target === "title" ? scene.style.titleTextOffsetY : scene.style.sceneTextOffsetY;
+  return { transform: `translate(${x / 3}px, ${y / 3}px)` };
+}
+
+function getChoiceTextOffsetStyle(scene: Scene): CSSProperties {
+  return {
+    transform: `translate(${scene.style.choiceTextOffsetX / 3}px, ${
+      scene.style.choiceTextOffsetY / 3
+    }px)`
   };
 }
 
@@ -276,11 +338,13 @@ function getPanelVisualStyle({
   transparent,
   color,
   borderColor,
+  borderEnabled,
   opacity
 }: {
   transparent: boolean;
   color: string;
   borderColor: string;
+  borderEnabled: boolean;
   opacity: number;
 }): CSSProperties {
   if (transparent || opacity <= 0) {
@@ -294,26 +358,24 @@ function getPanelVisualStyle({
 
   return {
     background: colorToRgba(color, opacity),
-    borderColor: colorToRgba(borderColor, Math.min(1, Math.max(0.12, opacity))),
+    ...(borderEnabled
+      ? { borderColor: colorToRgba(borderColor, Math.min(1, Math.max(0.12, opacity))) }
+      : { border: 0 }),
     boxShadow: opacity < 0.08 ? "none" : undefined,
     backdropFilter: "none"
   };
 }
 
 function colorToRgba(color: string, opacity: number): string {
-  const normalized = color.trim();
-  if (!/^#[0-9a-fA-F]{6}$/.test(normalized)) {
-    return normalized;
-  }
-
-  const red = Number.parseInt(normalized.slice(1, 3), 16);
-  const green = Number.parseInt(normalized.slice(3, 5), 16);
-  const blue = Number.parseInt(normalized.slice(5, 7), 16);
-  return `rgba(${red}, ${green}, ${blue}, ${Math.max(0, Math.min(1, opacity))})`;
+  return applyColorOpacity(color, opacity);
 }
 
 export function toMediaSrc(imagePath: string): string {
   const trimmedPath = imagePath.trim();
+
+  if (isLocalMediaPath(trimmedPath) && window.storyLife?.getMediaUrl) {
+    return window.storyLife.getMediaUrl(trimmedPath);
+  }
 
   if (
     trimmedPath.startsWith("file://") ||
@@ -331,14 +393,19 @@ export function toMediaSrc(imagePath: string): string {
   return trimmedPath;
 }
 
-function useResolvedImageSrc(imagePath: string): string {
-  const [src, setSrc] = useState(() => toMediaSrc(imagePath));
+function useResolvedMediaSrc(imagePath: string): string {
+  const [src, setSrc] = useState(() => getInitialMediaSrc(imagePath));
 
   useEffect(() => {
     let isCurrent = true;
-    setSrc(toMediaSrc(imagePath));
+    setSrc(getInitialMediaSrc(imagePath));
 
-    if (!imagePath.trim() || !window.storyLife?.readImagePreview) {
+    if (
+      !imagePath.trim() ||
+      !isLocalMediaPath(imagePath) ||
+      window.storyLife?.getMediaUrl ||
+      !window.storyLife?.readImagePreview
+    ) {
       return () => {
         isCurrent = false;
       };
@@ -359,6 +426,22 @@ function useResolvedImageSrc(imagePath: string): string {
   }, [imagePath]);
 
   return src;
+}
+
+function getInitialMediaSrc(mediaPath: string): string {
+  if (
+    isLocalMediaPath(mediaPath) &&
+    !window.storyLife?.getMediaUrl &&
+    window.storyLife?.readImagePreview
+  ) {
+    return "";
+  }
+  return toMediaSrc(mediaPath);
+}
+
+function isLocalMediaPath(mediaPath: string): boolean {
+  const trimmedPath = mediaPath.trim();
+  return trimmedPath.startsWith("file://") || /^[a-zA-Z]:\\/.test(trimmedPath);
 }
 
 function playChoiceClickSound() {

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultProject } from "../domain/project";
 import { StoryBlueprint } from "../utils/storyBlueprint";
-import { finalizeProjectFromBlueprint } from "./AIAssistantModal";
+import {
+  applyNarrativeRepairPatch,
+  finalizeProjectFromBlueprint
+} from "./AIAssistantModal";
 
 const blueprint: StoryBlueprint = {
   title: "Compiled quest",
@@ -77,5 +80,98 @@ describe("finalizeProjectFromBlueprint", () => {
     expect([...reachable].sort()).toEqual(["scene_1", "scene_2", "scene_3"]);
     expect(project.flags).toEqual([]);
     expect(project.parameters).toEqual([]);
+  });
+
+  it("repairs a missing blueprint title from the scene beat", () => {
+    const blueprintWithMissingTitle = structuredClone(blueprint);
+    blueprintWithMissingTitle.scenes[0].title = "";
+
+    const project = finalizeProjectFromBlueprint(
+      { ...createDefaultProject(), scenes: [] },
+      blueprintWithMissingTitle
+    );
+
+    expect(project.scenes[0].title).toBe("Two roads split");
+    expect(project.scenes.every((scene) => scene.title.trim().length > 0)).toBe(true);
+  });
+});
+
+describe("applyNarrativeRepairPatch", () => {
+  it("allows prose fixes but ignores new scenes and graph changes", () => {
+    const project = finalizeProjectFromBlueprint(
+      { ...createDefaultProject(), scenes: [] },
+      blueprint
+    );
+    const changedOpening = structuredClone(project.scenes[0]);
+    changedOpening.text = "Rewritten opening consequence.";
+    changedOpening.choices[0].text = "Take the careful bridge";
+    changedOpening.choices[0].targetNodeId = "scene_3";
+    changedOpening.choices[0].outcomes[0].targetSceneId = "scene_3";
+    const extraScene = {
+      ...structuredClone(project.scenes[1]),
+      id: "scene_4",
+      title: "Unwanted extra scene"
+    };
+
+    const repaired = applyNarrativeRepairPatch(project, {
+      updatedScenes: [changedOpening],
+      newScenes: [extraScene]
+    });
+
+    expect(repaired.scenes).toHaveLength(3);
+    expect(repaired.scenes[0].text).toBe("Rewritten opening consequence.");
+    expect(repaired.scenes[0].choices[0].text).toBe("Take the careful bridge");
+    expect(repaired.scenes[0].choices[0].targetNodeId).toBe("scene_2");
+    expect(repaired.scenes[0].choices[0].outcomes[0].targetSceneId).toBe("scene_2");
+  });
+
+  it("allows a safe existing-scene rewire when narrative repair requires it", () => {
+    const project = finalizeProjectFromBlueprint(
+      { ...createDefaultProject(), scenes: [] },
+      blueprint
+    );
+    const changedOpening = structuredClone(project.scenes[0]);
+    changedOpening.choices[0].targetNodeId = "scene_3";
+    changedOpening.choices[0].outcomes[0].targetSceneId = "scene_3";
+    changedOpening.choices[1].targetNodeId = "scene_2";
+    changedOpening.choices[1].outcomes[0].targetSceneId = "scene_2";
+
+    const repaired = applyNarrativeRepairPatch(
+      project,
+      { updatedScenes: [changedOpening] },
+      { allowGraphChanges: true }
+    );
+
+    expect(repaired.scenes[0].choices.map((choice) => choice.targetNodeId)).toEqual([
+      "scene_3",
+      "scene_2"
+    ]);
+    expect(repaired.scenes[0].choices.map((choice) => choice.outcomes[0].targetSceneId)).toEqual([
+      "scene_3",
+      "scene_2"
+    ]);
+  });
+
+  it("rejects a repair rewire that makes one branch unreachable", () => {
+    const project = finalizeProjectFromBlueprint(
+      { ...createDefaultProject(), scenes: [] },
+      blueprint
+    );
+    const changedOpening = structuredClone(project.scenes[0]);
+    changedOpening.choices[0].targetNodeId = "scene_3";
+    changedOpening.choices[0].outcomes[0].targetSceneId = "scene_3";
+    changedOpening.choices[1].targetNodeId = "scene_3";
+    changedOpening.choices[1].outcomes[0].targetSceneId = "scene_3";
+
+    const repaired = applyNarrativeRepairPatch(
+      project,
+      { updatedScenes: [changedOpening] },
+      { allowGraphChanges: true }
+    );
+
+    expect(repaired.scenes[0].choices.map((choice) => choice.targetNodeId)).toEqual([
+      "scene_2",
+      "scene_3"
+    ]);
   });
 });

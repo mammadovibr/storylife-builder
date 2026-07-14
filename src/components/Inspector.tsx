@@ -8,6 +8,7 @@ import {
   useState
 } from "react";
 import {
+  applySceneVisual,
   Choice,
   ChoiceCondition,
   ChoiceEffect,
@@ -20,17 +21,28 @@ import {
   createChoiceOutcome,
   createParameterCondition,
   createParameterEffect,
+  getActiveSceneImageVariant,
   ParameterConditionOperator,
   Scene,
   SceneStyle,
   SCENE_LAYOUT_OPTIONS,
+  SCENE_TRANSITION_OPTIONS,
   SceneLayoutType,
+  SceneTransitionOverride,
   SceneType,
   SceneId,
+  SceneVisualMediaType,
   StoryFlag,
   StoryParameter,
   ProjectTheme
 } from "../domain/project";
+import {
+  CHOICE_BUTTON_FRAMES,
+  getChoiceButtonFrameStyle
+} from "../utils/choiceButtonFrames";
+import { savePicture } from "../utils/savePicture";
+import { applyColorOpacity } from "../utils/colorOpacity";
+import { AnimatedSceneImage } from "./AnimatedSceneImage";
 
 interface InspectorProps {
   selectedScene: Scene | null;
@@ -44,11 +56,15 @@ interface InspectorProps {
     trackHistory?: boolean
   ) => void;
   onAddChoice: (sceneId: SceneId) => void;
+  onAddChoiceWithScene: (sceneId: SceneId) => void;
   onDeleteScene: (sceneId: SceneId) => void;
   onPickChoiceTarget: (sceneId: SceneId, choiceId: string) => void;
   onSelectScene: (sceneId: SceneId) => void;
   onSceneLayoutClose: () => void;
-  isPickingChoiceTarget: boolean;
+  onApplySceneLayoutToAll: (scene: Scene) => void;
+  pickingChoiceId: string | null;
+  focusChoiceId: string | null;
+  onChoiceFocusHandled: () => void;
 }
 
 export function Inspector({
@@ -59,11 +75,15 @@ export function Inspector({
   projectTheme,
   onUpdateScene,
   onAddChoice,
+  onAddChoiceWithScene,
   onDeleteScene,
   onPickChoiceTarget,
   onSelectScene,
   onSceneLayoutClose,
-  isPickingChoiceTarget
+  onApplySceneLayoutToAll,
+  pickingChoiceId,
+  focusChoiceId,
+  onChoiceFocusHandled
 }: InspectorProps) {
   const [expandedChoiceIds, setExpandedChoiceIds] = useState<Set<string>>(
     () => new Set()
@@ -71,6 +91,8 @@ export function Inspector({
   const knownChoiceIdsRef = useRef(
     new Set(selectedScene?.choices.map((choice) => choice.id) ?? [])
   );
+  const choiceTextAreaRefs = useRef(new Map<string, HTMLTextAreaElement>());
+  const [isMediaExpanded, setMediaExpanded] = useState(false);
   const [isSoundExpanded, setSoundExpanded] = useState(false);
   const [isNotesExpanded, setNotesExpanded] = useState(false);
   const [isScenePreviewOpen, setScenePreviewOpen] = useState(false);
@@ -120,6 +142,9 @@ export function Inspector({
     const currentChoiceIds = new Set(
       selectedScene?.choices.map((choice) => choice.id) ?? []
     );
+    const newChoiceIds = [...currentChoiceIds].filter(
+      (choiceId) => !knownChoiceIdsRef.current.has(choiceId)
+    );
 
     setExpandedChoiceIds((currentIds) => {
       const nextIds = new Set(currentIds);
@@ -128,16 +153,41 @@ export function Inspector({
           nextIds.delete(choiceId);
         }
       }
+      for (const choiceId of newChoiceIds) nextIds.add(choiceId);
       return nextIds;
     });
+    knownChoiceIdsRef.current = currentChoiceIds;
   }, [selectedScene?.choices]);
 
   useEffect(() => {
     setExpandedChoiceIds(new Set());
+    setMediaExpanded(false);
+    setSoundExpanded(false);
+    setNotesExpanded(false);
     knownChoiceIdsRef.current = new Set(
       selectedScene?.choices.map((choice) => choice.id) ?? []
     );
   }, [selectedScene?.id]);
+
+  useEffect(() => {
+    if (!focusChoiceId || !selectedScene?.choices.some((choice) => choice.id === focusChoiceId)) {
+      return;
+    }
+    setExpandedChoiceIds((currentIds) => new Set([...currentIds, focusChoiceId]));
+  }, [focusChoiceId, selectedScene?.choices]);
+
+  useEffect(() => {
+    if (!focusChoiceId || !expandedChoiceIds.has(focusChoiceId)) {
+      return;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      const textArea = choiceTextAreaRefs.current.get(focusChoiceId);
+      textArea?.focus();
+      if (textArea) textArea.setSelectionRange(textArea.value.length, textArea.value.length);
+      if (textArea) onChoiceFocusHandled();
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [expandedChoiceIds, focusChoiceId]);
 
   if (!selectedScene) {
     return (
@@ -289,9 +339,18 @@ export function Inspector({
       </button>
       <div className="choices-header">
         <h3>Choices</h3>
-        <button type="button" onClick={() => onAddChoice(selectedScene.id)}>
-          Add Choice
-        </button>
+        <div className="choice-add-actions">
+          <button type="button" onClick={() => onAddChoice(selectedScene.id)}>
+            Choice only
+          </button>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => onAddChoiceWithScene(selectedScene.id)}
+          >
+            Choice + Scene
+          </button>
+        </div>
       </div>
       <div className="choices-list">
         {selectedScene.choices.length === 0 && (
@@ -325,6 +384,10 @@ export function Inspector({
                 <label className="field-label">
                   Choice text
                   <textarea
+                    ref={(element) => {
+                      if (element) choiceTextAreaRefs.current.set(choice.id, element);
+                      else choiceTextAreaRefs.current.delete(choice.id);
+                    }}
                     value={draftChoiceTexts[choice.id] ?? choice.text}
                     rows={getChoiceTextRows(draftChoiceTexts[choice.id] ?? choice.text)}
                     onChange={(event) => {
@@ -342,10 +405,32 @@ export function Inspector({
                     Target scene
                     <select
                       value={choice.targetNodeId}
-                      onChange={(event) =>
-                        updateChoice(choice.id, { targetNodeId: event.target.value })
-                      }
+                      onChange={(event) => {
+                        const targetNodeId = event.target.value;
+                        updateChoice(choice.id, {
+                          targetNodeId,
+                          outcomes:
+                            choice.useMultipleOutcomes
+                              ? choice.outcomes
+                              : choice.outcomes.length === 1
+                                ? [
+                                  {
+                                    ...choice.outcomes[0],
+                                    targetSceneId: targetNodeId,
+                                    percent: 100
+                                  }
+                                  ]
+                                : [
+                                    createChoiceOutcome(
+                                      targetNodeId,
+                                      100,
+                                      `outcome_${choice.id}`
+                                    )
+                                  ]
+                        });
+                      }}
                     >
+                      <option value="">Not connected</option>
                       {scenes.map((scene) => (
                         <option key={scene.id} value={scene.id}>
                           {scene.title || scene.id}
@@ -356,9 +441,13 @@ export function Inspector({
                   <button
                     type="button"
                     onClick={() => onPickChoiceTarget(selectedScene.id, choice.id)}
-                    className={isPickingChoiceTarget ? "primary-button" : ""}
+                    className={`choice-target-picker-button ${
+                      pickingChoiceId === choice.id ? "is-active" : ""
+                    }`}
+                    aria-label="Pick target scene on canvas"
+                    title="Pick target scene on canvas"
                   >
-                    Pick node
+                    <span aria-hidden="true">&#9678;</span>
                   </button>
                 </div>
                 <label className="checkbox-label choice-multiple-toggle">
@@ -611,18 +700,29 @@ export function Inspector({
           <option value="flagLogic">Flag logic scene</option>
         </select>
       </label>
-      <div className="field-label">
-        <span>Scene Image</span>
+      <CollapsibleSection
+        title="Scene Picture / Video"
+        expanded={isMediaExpanded}
+        onToggle={() => setMediaExpanded((current) => !current)}
+      >
         <SceneImageSection
+          key={selectedScene.id}
           imagePath={selectedScene.imagePath}
-          onImagePathChange={(imagePath) =>
-            onUpdateScene(selectedScene.id, (scene) => ({
-              ...scene,
-              imagePath
-            }))
+          mediaType={selectedScene.visualMediaType}
+          videoLoop={selectedScene.videoLoop}
+          sceneName={selectedScene.title || selectedScene.id}
+          onMediaChange={(imagePath, visualMediaType) =>
+            onUpdateScene(selectedScene.id, (scene) =>
+              applySceneVisual(scene, imagePath, visualMediaType, {
+                name: imagePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "Imported image"
+              })
+            )
+          }
+          onVideoLoopChange={(videoLoop) =>
+            onUpdateScene(selectedScene.id, (scene) => ({ ...scene, videoLoop }))
           }
         />
-      </div>
+      </CollapsibleSection>
       <CollapsibleSection
         title="Scene Sound"
         expanded={isSoundExpanded}
@@ -680,6 +780,7 @@ export function Inspector({
             onUpdateScene(selectedScene.id, updater, false)
           }
           onSelectScene={onSelectScene}
+          onApplySceneLayoutToAll={onApplySceneLayoutToAll}
           onClose={closeScenePreview}
         />
       )}
@@ -689,7 +790,11 @@ export function Inspector({
 
 interface SceneImageSectionProps {
   imagePath: string;
-  onImagePathChange: (imagePath: string) => void;
+  mediaType: SceneVisualMediaType;
+  videoLoop: boolean;
+  sceneName: string;
+  onMediaChange: (imagePath: string, mediaType: SceneVisualMediaType) => void;
+  onVideoLoopChange: (videoLoop: boolean) => void;
 }
 
 interface CollapsibleSectionProps {
@@ -818,6 +923,86 @@ interface UserLayoutTemplate {
 const USER_LAYOUT_TEMPLATE_KEY = "storylife-user-layout-templates-v1";
 const USER_LAYOUT_TEMPLATE_COUNT = 10;
 const MIN_CHOICES_PANEL_HEIGHT = 24;
+const FONT_FAMILY_OPTIONS = [
+  { value: "system", label: "Clean UI" },
+  { value: "serif", label: "Book Serif" },
+  { value: "mono", label: "Mono" }
+];
+
+const COLOR_SCHEME_PRESETS: Array<{
+  name: string;
+  colors: Partial<SceneStyle>;
+}> = [
+  { name: "Ink & Ivory", colors: { backgroundColor: "#f5f1e8", textColor: "#20242a", titlePanelColor: "#fffdf8", titleBorderColor: "#69727d", titleTextColor: "#20242a", textPanelColor: "#fffdf8", textBorderColor: "#a6adb4", choicesPanelColor: "#e5edf2", choicesBorderColor: "#536b7a", choicesTextColor: "#18252d" } },
+  { name: "Graphite Gold", colors: { backgroundColor: "#17191c", textColor: "#f2eee5", titlePanelColor: "#23262b", titleBorderColor: "#d3a84f", titleTextColor: "#f4cf7a", textPanelColor: "#23262b", textBorderColor: "#77633f", choicesPanelColor: "#2b2e33", choicesBorderColor: "#d3a84f", choicesTextColor: "#fff7e4" } },
+  { name: "Ocean Coral", colors: { backgroundColor: "#0e3440", textColor: "#f4fbfc", titlePanelColor: "#164b59", titleBorderColor: "#ff8f70", titleTextColor: "#fff4ed", textPanelColor: "#164b59", textBorderColor: "#69a9b7", choicesPanelColor: "#f06f52", choicesBorderColor: "#ffd2c5", choicesTextColor: "#241512" } },
+  { name: "Forest Paper", colors: { backgroundColor: "#163c32", textColor: "#f7f3e8", titlePanelColor: "#245446", titleBorderColor: "#d7c58c", titleTextColor: "#fff7d8", textPanelColor: "#f2ead7", textBorderColor: "#9e8d5f", choicesPanelColor: "#d8e5d8", choicesBorderColor: "#416f5c", choicesTextColor: "#17352c" } },
+  { name: "Cherry Snow", colors: { backgroundColor: "#f7f8fa", textColor: "#25262b", titlePanelColor: "#ffffff", titleBorderColor: "#c83f55", titleTextColor: "#9f2136", textPanelColor: "#ffffff", textBorderColor: "#c8cbd1", choicesPanelColor: "#f7dce1", choicesBorderColor: "#b93249", choicesTextColor: "#41151e" } },
+  { name: "Midnight Cyan", colors: { backgroundColor: "#0b1720", textColor: "#e8f7fa", titlePanelColor: "#122633", titleBorderColor: "#49bfd1", titleTextColor: "#8fe7f2", textPanelColor: "#122633", textBorderColor: "#356878", choicesPanelColor: "#123d49", choicesBorderColor: "#49bfd1", choicesTextColor: "#e9fcff" } },
+  { name: "Slate Apricot", colors: { backgroundColor: "#2d3742", textColor: "#f7f3ed", titlePanelColor: "#3b4753", titleBorderColor: "#f2a66f", titleTextColor: "#ffd0ad", textPanelColor: "#3b4753", textBorderColor: "#72808c", choicesPanelColor: "#f2a66f", choicesBorderColor: "#ffe0c9", choicesTextColor: "#312017" } },
+  { name: "Sage Charcoal", colors: { backgroundColor: "#e7eee8", textColor: "#222925", titlePanelColor: "#f8faf8", titleBorderColor: "#5b7565", titleTextColor: "#284536", textPanelColor: "#f8faf8", textBorderColor: "#9aad9f", choicesPanelColor: "#3f584a", choicesBorderColor: "#23392e", choicesTextColor: "#f5fff8" } },
+  { name: "Royal Lemon", colors: { backgroundColor: "#22283e", textColor: "#f6f7fb", titlePanelColor: "#303853", titleBorderColor: "#f0d95b", titleTextColor: "#fff19a", textPanelColor: "#303853", textBorderColor: "#77809d", choicesPanelColor: "#f0d95b", choicesBorderColor: "#fff4a6", choicesTextColor: "#252818" } },
+  { name: "Brick Mist", colors: { backgroundColor: "#f1f3f4", textColor: "#282829", titlePanelColor: "#ffffff", titleBorderColor: "#a84438", titleTextColor: "#87352d", textPanelColor: "#ffffff", textBorderColor: "#b8bdc0", choicesPanelColor: "#a84438", choicesBorderColor: "#722a23", choicesTextColor: "#fff8f5" } },
+  { name: "Teal Sand", colors: { backgroundColor: "#dfeceb", textColor: "#173230", titlePanelColor: "#f7fbfa", titleBorderColor: "#28736c", titleTextColor: "#17544f", textPanelColor: "#f7fbfa", textBorderColor: "#85aaa6", choicesPanelColor: "#28736c", choicesBorderColor: "#174c47", choicesTextColor: "#f5fffd" } },
+  { name: "Plum Mint", colors: { backgroundColor: "#302535", textColor: "#f7f3f8", titlePanelColor: "#443349", titleBorderColor: "#7fd6b2", titleTextColor: "#b9f3d8", textPanelColor: "#443349", textBorderColor: "#806b85", choicesPanelColor: "#7fd6b2", choicesBorderColor: "#c4f7df", choicesTextColor: "#18352a" } },
+  { name: "Blue Paper", colors: { backgroundColor: "#e9f0f6", textColor: "#1d2c38", titlePanelColor: "#ffffff", titleBorderColor: "#3f6f91", titleTextColor: "#264f6d", textPanelColor: "#ffffff", textBorderColor: "#9fb5c4", choicesPanelColor: "#335f7d", choicesBorderColor: "#24465d", choicesTextColor: "#f4fbff" } },
+  { name: "Copper Night", colors: { backgroundColor: "#181d22", textColor: "#f3eee9", titlePanelColor: "#252c32", titleBorderColor: "#c77c4d", titleTextColor: "#f1b187", textPanelColor: "#252c32", textBorderColor: "#695344", choicesPanelColor: "#8f4f2d", choicesBorderColor: "#e0a27d", choicesTextColor: "#fff7f1" } },
+  { name: "Rose Graphite", colors: { backgroundColor: "#29292d", textColor: "#f7f4f5", titlePanelColor: "#38383e", titleBorderColor: "#e08ca2", titleTextColor: "#ffc0d0", textPanelColor: "#38383e", textBorderColor: "#77727a", choicesPanelColor: "#b95e77", choicesBorderColor: "#f1a7ba", choicesTextColor: "#fff8fa" } },
+  { name: "Moss Sky", colors: { backgroundColor: "#dce9e5", textColor: "#21312a", titlePanelColor: "#f6faf8", titleBorderColor: "#55735f", titleTextColor: "#345442", textPanelColor: "#f6faf8", textBorderColor: "#9daf9f", choicesPanelColor: "#547c91", choicesBorderColor: "#36596b", choicesTextColor: "#f7fcff" } },
+  { name: "Black Ice", colors: { backgroundColor: "#0f1215", textColor: "#f2f7f8", titlePanelColor: "#1b2025", titleBorderColor: "#a9c7cf", titleTextColor: "#d8f3f7", textPanelColor: "#1b2025", textBorderColor: "#506068", choicesPanelColor: "#d6e5e8", choicesBorderColor: "#ffffff", choicesTextColor: "#172126" } },
+  { name: "Amber Cloud", colors: { backgroundColor: "#f2f0ec", textColor: "#2f2b25", titlePanelColor: "#ffffff", titleBorderColor: "#b87924", titleTextColor: "#855413", textPanelColor: "#ffffff", textBorderColor: "#c6b89f", choicesPanelColor: "#e8c47f", choicesBorderColor: "#a86a18", choicesTextColor: "#33240e" } },
+  { name: "Crimson Navy", colors: { backgroundColor: "#111d32", textColor: "#f7f8fb", titlePanelColor: "#1c2c49", titleBorderColor: "#dd5964", titleTextColor: "#ffadb4", textPanelColor: "#1c2c49", textBorderColor: "#63718a", choicesPanelColor: "#b83e49", choicesBorderColor: "#f07c85", choicesTextColor: "#fff7f8" } },
+  { name: "Clean Contrast", colors: { backgroundColor: "#ffffff", textColor: "#151719", titlePanelColor: "#ffffff", titleBorderColor: "#151719", titleTextColor: "#151719", textPanelColor: "#ffffff", textBorderColor: "#70757a", choicesPanelColor: "#151719", choicesBorderColor: "#151719", choicesTextColor: "#ffffff" } }
+];
+
+function createGradientScheme(
+  name: string,
+  backgroundFrom: string,
+  backgroundTo: string,
+  panelFrom: string,
+  panelTo: string,
+  accent: string,
+  textColor = "#ffffff"
+): { name: string; colors: Partial<SceneStyle> } {
+  return {
+    name,
+    colors: {
+      backgroundColor: `linear-gradient(145deg, ${backgroundFrom} 0%, ${backgroundTo} 100%)`,
+      textColor,
+      titlePanelColor: `linear-gradient(135deg, ${panelFrom} 0%, ${panelTo} 100%)`,
+      titleBorderColor: accent,
+      titleTextColor: textColor,
+      textPanelColor: `linear-gradient(135deg, ${panelFrom} 0%, ${panelTo} 100%)`,
+      textBorderColor: accent,
+      choicesPanelColor: `linear-gradient(135deg, ${panelTo} 0%, ${panelFrom} 100%)`,
+      choicesBorderColor: accent,
+      choicesTextColor: textColor
+    }
+  };
+}
+
+const GRADIENT_COLOR_SCHEME_PRESETS = [
+  createGradientScheme("Aurora Night", "#071c2c", "#174f52", "#102c3a", "#246b68", "#7de3c3"),
+  createGradientScheme("Crimson Dusk", "#240d18", "#6d2439", "#35121f", "#7f2f48", "#e5a06f"),
+  createGradientScheme("Royal Horizon", "#14172d", "#364f83", "#202443", "#4a6395", "#e1c56f"),
+  createGradientScheme("Emerald Smoke", "#0d211b", "#315b47", "#17352a", "#426d58", "#c9b56b"),
+  createGradientScheme("Copper Ember", "#1c1411", "#74402a", "#2c1d17", "#875039", "#e7ad73"),
+  createGradientScheme("Ocean Glass", "#082032", "#176b83", "#123448", "#23839a", "#8eddeb"),
+  createGradientScheme("Plum Moon", "#211226", "#603f68", "#321a38", "#75517d", "#d3a0d8"),
+  createGradientScheme("Graphite Ice", "#111418", "#3e4c54", "#1d2228", "#52636c", "#b8d6dd"),
+  createGradientScheme("Sunset Coral", "#4b1824", "#d26c55", "#642334", "#b84f45", "#ffd49d"),
+  createGradientScheme("Blue Gold", "#0b1830", "#2e5481", "#15284a", "#3f6591", "#d8b85f"),
+  createGradientScheme("Forest Dawn", "#142b25", "#67805d", "#234239", "#78906d", "#e3d08a"),
+  createGradientScheme("Black Cherry", "#110d12", "#5a1f35", "#21131b", "#6d2c43", "#d98c9f"),
+  createGradientScheme("Storm Silver", "#1b2028", "#687382", "#2a303a", "#7c8794", "#d2dae0"),
+  createGradientScheme("Teal Flame", "#07272a", "#b75d3f", "#10383a", "#8c4d3d", "#f4bd75"),
+  createGradientScheme("Indigo Rose", "#191735", "#8c4163", "#29234c", "#75405c", "#efabc0"),
+  createGradientScheme("Moss Bronze", "#18241c", "#735a32", "#29382b", "#806843", "#d9c080"),
+  createGradientScheme("Arctic Pine", "#0b2630", "#3c7968", "#153943", "#4b8c79", "#a9e4d3"),
+  createGradientScheme("Wine Velvet", "#250c15", "#7c3043", "#38131f", "#914157", "#e0b578"),
+  createGradientScheme("Midnight Amber", "#0d111a", "#5b431d", "#1b202a", "#6c5228", "#e6c36b"),
+  createGradientScheme("Deep Spectrum", "#101936", "#542b5f", "#1d2c53", "#683970", "#73d5c6")
+];
 
 function SceneVisualControls({
   scene,
@@ -829,6 +1014,7 @@ function SceneVisualControls({
   const [activeTarget, setActiveTarget] = useState<PreviewTarget>(
     scene.imagePath.trim() !== "" ? "image" : "text"
   );
+  const [colorSchemeTab, setColorSchemeTab] = useState<"solid" | "gradient">("solid");
   const [userTemplates, setUserTemplates] = useState<Array<UserLayoutTemplate | null>>(
     readUserLayoutTemplates
   );
@@ -845,6 +1031,9 @@ function SceneVisualControls({
     startScale: number;
     startPanelWidth: number;
     startPanelHeight: number;
+    textOnly: boolean;
+    startTextOffsetX: number;
+    startTextOffsetY: number;
   } | null>(null);
 
   useEffect(() => {
@@ -878,6 +1067,25 @@ function SceneVisualControls({
       const deltaY = event.clientY - activeDrag.startY;
 
       if (activeDrag.mode === "move") {
+        if (activeDrag.textOnly && activeDrag.target !== "image") {
+          patchStyle(
+            activeDrag.target === "title"
+              ? {
+                  titleTextOffsetX: activeDrag.startTextOffsetX + deltaX * 3,
+                  titleTextOffsetY: activeDrag.startTextOffsetY + deltaY * 3
+                }
+              : activeDrag.target === "text"
+                ? {
+                    sceneTextOffsetX: activeDrag.startTextOffsetX + deltaX * 3,
+                    sceneTextOffsetY: activeDrag.startTextOffsetY + deltaY * 3
+                  }
+                : {
+                    choiceTextOffsetX: activeDrag.startTextOffsetX + deltaX * 3,
+                    choiceTextOffsetY: activeDrag.startTextOffsetY + deltaY * 3
+                  }
+          );
+          return;
+        }
         patchStyle(
           prefixPatch(activeDrag.target, {
             offsetX: activeDrag.startOffsetX + deltaX * 3,
@@ -1036,9 +1244,10 @@ function SceneVisualControls({
     const isTextControl =
       event.target instanceof HTMLElement &&
       event.target.closest("input, textarea, select, button");
+    const textOnly = mode === "move" && target !== "image" && event.ctrlKey;
     const isChoiceTextDrag = target === "choices" && mode === "move";
 
-    if (mode === "move" && isTextControl && !isChoiceTextDrag) {
+    if (mode === "move" && isTextControl && !isChoiceTextDrag && !textOnly) {
       return;
     }
 
@@ -1092,7 +1301,24 @@ function SceneVisualControls({
           ? style.textPanelHeight || panelElement?.offsetHeight || 0
           : target === "choices"
             ? style.choicesPanelHeight || panelElement?.offsetHeight || 0
-            : 0
+            : 0,
+      textOnly,
+      startTextOffsetX:
+        target === "title"
+          ? style.titleTextOffsetX
+          : target === "text"
+            ? style.sceneTextOffsetX
+            : target === "choices"
+              ? style.choiceTextOffsetX
+              : 0,
+      startTextOffsetY:
+        target === "title"
+          ? style.titleTextOffsetY
+          : target === "text"
+            ? style.sceneTextOffsetY
+            : target === "choices"
+              ? style.choiceTextOffsetY
+              : 0
     };
   }
 
@@ -1126,18 +1352,21 @@ function SceneVisualControls({
     transparent: style.titlePanelTransparent || style.titlePanelOpacity <= 0,
     color: style.titlePanelColor || "#fffdfa",
     borderColor: style.titleBorderColor || "#a48d69",
+    borderEnabled: style.titleBorderEnabled,
     opacity: style.titlePanelOpacity
   });
   const textPanelVisual = getPanelVisualStyle({
     transparent: style.textPanelTransparent || style.textPanelOpacity <= 0,
     color: style.textPanelColor || "#fffdfa",
     borderColor: style.textBorderColor || "#a48d69",
+    borderEnabled: style.textBorderEnabled,
     opacity: style.textPanelOpacity
   });
   const choicesPanelVisual = getPanelVisualStyle({
     transparent: style.choicesPanelTransparent || style.choicesPanelOpacity <= 0,
     color: style.choicesPanelColor || "#fffaf1",
     borderColor: style.choicesBorderColor || "#807058",
+    borderEnabled: style.choicesBorderEnabled,
     opacity: style.choicesPanelOpacity
   });
   const choicesAreTransparent = style.choicesPanelTransparent || style.choicesPanelOpacity <= 0;
@@ -1163,12 +1392,23 @@ function SceneVisualControls({
             style={imageFrameStyle}
             onMouseDown={(event) => startPreviewDrag("image", "move", event)}
           >
-            <InspectorImagePreview
-              imagePath={scene.imagePath}
-              className="scene-preview-image"
-              style={imageVisualStyle}
-              fallback={null}
-            />
+            {scene.visualMediaType === "image" ? (
+              <AnimatedSceneImage
+                imagePath={scene.imagePath}
+                animation={getActiveSceneImageVariant(scene)?.animation ?? null}
+                className="scene-preview-image"
+                style={imageVisualStyle}
+              />
+            ) : (
+              <InspectorVisualPreview
+                mediaPath={scene.imagePath}
+                mediaType={scene.visualMediaType}
+                videoLoop={scene.videoLoop}
+                className="scene-preview-image"
+                style={imageVisualStyle}
+                fallback={null}
+              />
+            )}
             {fullSize && (
               <>
                 {renderMoveHandle("image")}
@@ -1177,7 +1417,7 @@ function SceneVisualControls({
             )}
           </div>
         )}
-        <section
+        {style.showSceneTitle && <section
           className={`scene-preview-title-panel scene-preview-editable ${
             fullSize ? "is-editable" : ""
           } ${activeTarget === "title" ? "is-active" : ""} ${
@@ -1203,12 +1443,13 @@ function SceneVisualControls({
             <textarea
               className="scene-preview-title-input"
               value={scene.title}
-              placeholder="Untitled scene"
+              placeholder=""
               rows={getTitleTextRows(scene.title)}
               style={{
                 fontSize: `${style.titleFontSize}px`,
                 textAlign: style.textAlign,
-                height: style.titlePanelHeight > 0 ? "100%" : undefined
+                height: style.titlePanelHeight > 0 ? "100%" : undefined,
+                transform: `translate(${style.titleTextOffsetX / 3}px, ${style.titleTextOffsetY / 3}px)`
               }}
               onChange={(event) =>
                 onUpdateScene((currentScene) => ({
@@ -1216,10 +1457,11 @@ function SceneVisualControls({
                   title: event.target.value
                 }))
               }
+              onFocus={() => setActiveTarget("title")}
             />
           ) : (
             <strong style={{ fontSize: `${style.titleFontSize}px`, textAlign: style.textAlign }}>
-              {scene.title || "Untitled scene"}
+              {scene.title}
             </strong>
           )}
           {fullSize && (
@@ -1227,7 +1469,7 @@ function SceneVisualControls({
               {renderResizeHandles("title")}
             </>
           )}
-        </section>
+        </section>}
         <section
           className={`scene-preview-text-panel scene-preview-editable ${
             fullSize ? "is-editable" : ""
@@ -1253,11 +1495,12 @@ function SceneVisualControls({
               <textarea
                 className="scene-preview-text-input"
                 value={scene.text}
-                placeholder="This scene has no text yet."
+                placeholder=""
                 rows={getSceneTextRows(scene.text)}
                 style={{
                   textAlign: style.textAlign,
-                  height: style.textPanelHeight > 0 ? "100%" : undefined
+                  height: style.textPanelHeight > 0 ? "100%" : undefined,
+                  transform: `translate(${style.sceneTextOffsetX / 3}px, ${style.sceneTextOffsetY / 3}px)`
                 }}
                 onChange={(event) =>
                   onUpdateScene((currentScene) => ({
@@ -1265,10 +1508,11 @@ function SceneVisualControls({
                     text: event.target.value
                   }))
                 }
+                onFocus={() => setActiveTarget("text")}
               />
           ) : (
               <p style={{ textAlign: style.textAlign }}>
-                {scene.text || "This scene has no text yet."}
+                {scene.text}
               </p>
           )}
           {fullSize && (
@@ -1291,54 +1535,69 @@ function SceneVisualControls({
               style.choicesPanelHeight > 0 ? `${style.choicesPanelHeight}px` : undefined,
             color: style.choicesTextColor || undefined,
             fontSize: `${style.choicesFontSize}px`,
+            fontFamily: getPreviewFontFamily(style.choicesFontFamily),
             transform: choicesTransform
           }}
           onMouseDown={(event) => startPreviewDrag("choices", "move", event)}
         >
           {fullSize && renderMoveHandle("choices")}
           <div className="scene-preview-choice-list">
-            {scene.choices.length === 0 ? (
-              <span className="choice-preview-placeholder">No choices yet</span>
-            ) : (
+            {scene.choices.length > 0 && (
               scene.choices.map((choice, choiceIndex) =>
                 fullSize ? (
-                  <textarea
+                  <div
                     key={choice.id}
-                    className="choice-preview-input"
-                    value={choice.text}
-                    placeholder={`Choice ${choiceIndex + 1}`}
-                    rows={getChoicePreviewRows(choice.text)}
+                    className="choice-preview-frame"
                     style={{
                       ...choicesPanelVisual,
-                      color: style.choicesTextColor || undefined,
-                      fontSize: `${style.choicesFontSize}px`,
-                      padding: `${style.choicesPaddingTop}px ${style.choicesPaddingSide}px`,
                       ...(choicesAreTransparent
                         ? {
                             background: "transparent",
                             borderColor: "transparent",
                             boxShadow: "none"
                           }
-                        : {})
+                        : {}),
+                      ...getChoiceButtonFrameStyle(
+                        style.choicesFrameStyle,
+                        style.choicesPanelTransparent ? 0 : style.choicesPanelOpacity
+                      ),
+                      padding: `${style.choicesPaddingTop}px ${style.choicesPaddingSide}px`
                     }}
-                    onChange={(event) =>
-                      onUpdateScene((currentScene) => ({
-                        ...currentScene,
-                        choices: currentScene.choices.map((currentChoice) =>
-                          currentChoice.id === choice.id
-                            ? { ...currentChoice, text: event.target.value }
-                            : currentChoice
-                        )
-                      }))
-                    }
-                    onMouseDown={(event) => {
-                      if (fullSize) {
-                        startPreviewDrag("choices", "move", event);
+                  >
+                    <textarea
+                      className="choice-preview-input choice-preview-text-layer"
+                      value={choice.text}
+                      placeholder=""
+                      rows={getChoicePreviewRows(choice.text)}
+                      style={{
+                        color: style.choicesTextColor || undefined,
+                        fontSize: `${style.choicesFontSize}px`,
+                        fontFamily: getPreviewFontFamily(style.choicesFontFamily),
+                        transform: `translate(${style.choiceTextOffsetX / 3}px, ${style.choiceTextOffsetY / 3}px)`
+                      }}
+                      onChange={(event) =>
+                        onUpdateScene((currentScene) => ({
+                          ...currentScene,
+                          choices: currentScene.choices.map((currentChoice) =>
+                            currentChoice.id === choice.id
+                              ? { ...currentChoice, text: event.target.value }
+                              : currentChoice
+                          )
+                        }))
                       }
-                    }}
-                  />
+                      onFocus={() => setActiveTarget("choices")}
+                      onMouseDown={(event) => startPreviewDrag("choices", "move", event)}
+                    />
+                  </div>
                 ) : (
-                  <span key={choice.id}>{choice.text || `Choice ${choiceIndex + 1}`}</span>
+                  <span
+                    key={choice.id}
+                    style={{
+                      transform: `translate(${style.choiceTextOffsetX / 3}px, ${style.choiceTextOffsetY / 3}px)`
+                    }}
+                  >
+                    {choice.text}
+                  </span>
                 )
               )
             )}
@@ -1360,8 +1619,7 @@ function SceneVisualControls({
               onChange={(event) =>
                 onUpdateScene((currentScene) => ({
                   ...currentScene,
-                  layoutType: event.target.value as SceneLayoutType,
-                  style: createLayoutSceneStyle(event.target.value as SceneLayoutType)
+                  layoutType: event.target.value as SceneLayoutType
                 }))
               }
             >
@@ -1372,6 +1630,70 @@ function SceneVisualControls({
               ))}
             </select>
           </label>
+          <label className="field-label">
+            Scene transition
+            <select
+              value={style.sceneTransition}
+              onChange={(event) =>
+                patchStyle({
+                  sceneTransition: event.target.value as SceneTransitionOverride
+                })
+              }
+            >
+              <option value="project">Use Project Settings default</option>
+              {SCENE_TRANSITION_OPTIONS.map((transition) => (
+                <option key={transition.value} value={transition.value}>
+                  {transition.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <details className="scene-layout-details color-scheme-details">
+            <summary>Color schemes</summary>
+            <div className="color-scheme-tabs" role="tablist" aria-label="Color scheme type">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={colorSchemeTab === "solid"}
+                className={colorSchemeTab === "solid" ? "active" : ""}
+                onClick={() => setColorSchemeTab("solid")}
+              >
+                Solid
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={colorSchemeTab === "gradient"}
+                className={colorSchemeTab === "gradient" ? "active" : ""}
+                onClick={() => setColorSchemeTab("gradient")}
+              >
+                Gradients
+              </button>
+            </div>
+            <div className="color-scheme-grid">
+              {(colorSchemeTab === "solid"
+                ? COLOR_SCHEME_PRESETS
+                : GRADIENT_COLOR_SCHEME_PRESETS
+              ).map((preset) => (
+                <button
+                  type="button"
+                  key={preset.name}
+                  className="color-scheme-button"
+                  onClick={() => patchStyle(preset.colors)}
+                  title={`Apply ${preset.name}`}
+                >
+                  <span
+                    className="color-scheme-swatch"
+                    style={{
+                      background: `linear-gradient(90deg, ${preset.colors.backgroundColor} 0 34%, ${preset.colors.textPanelColor} 34% 67%, ${preset.colors.choicesPanelColor} 67% 100%)`
+                    }}
+                    aria-hidden="true"
+                  />
+                  <span>{preset.name}</span>
+                </button>
+              ))}
+            </div>
+          </details>
           <details className="scene-layout-details user-template-details">
             <summary>User templates</summary>
             <div className="user-template-grid">
@@ -1540,6 +1862,14 @@ function SceneVisualControls({
       {activeTarget === "title" && (
       <details className="transform-controls scene-layout-details is-active-control" open>
         <summary>Title style</summary>
+        <label className="checkbox-field">
+          <input
+            type="checkbox"
+            checked={style.showSceneTitle}
+            onChange={(event) => patchStyle({ showSceneTitle: event.target.checked })}
+          />
+          Show scene title
+        </label>
         <label className="field-label">
           Font
           <select
@@ -1550,6 +1880,14 @@ function SceneVisualControls({
             <option value="serif">Book Serif</option>
             <option value="mono">Mono</option>
           </select>
+        </label>
+        <label className="checkbox-field">
+          <input
+            type="checkbox"
+            checked={style.titleBorderEnabled}
+            onChange={(event) => patchStyle({ titleBorderEnabled: event.target.checked })}
+          />
+          Show title border
         </label>
         <label className="checkbox-field">
           <input
@@ -1673,6 +2011,25 @@ function SceneVisualControls({
       {activeTarget === "text" && (
       <details className="transform-controls scene-layout-details is-active-control" open>
         <summary>Text style</summary>
+        <label className="field-label">
+          Scene text font
+          <select
+            value={style.textFontFamily}
+            onChange={(event) => patchStyle({ textFontFamily: event.target.value })}
+          >
+            {FONT_FAMILY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="checkbox-field">
+          <input
+            type="checkbox"
+            checked={style.textBorderEnabled}
+            onChange={(event) => patchStyle({ textBorderEnabled: event.target.checked })}
+          />
+          Show text border
+        </label>
         <label className="checkbox-field">
           <input
             type="checkbox"
@@ -1807,6 +2164,54 @@ function SceneVisualControls({
       {activeTarget === "choices" && (
       <details className="transform-controls scene-layout-details is-active-control" open>
         <summary>Choice style</summary>
+        <label className="field-label">
+          Choice text font
+          <select
+            value={style.choicesFontFamily}
+            onChange={(event) => patchStyle({ choicesFontFamily: event.target.value })}
+          >
+            {FONT_FAMILY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="checkbox-field">
+          <input
+            type="checkbox"
+            checked={style.choicesBorderEnabled}
+            onChange={(event) => patchStyle({ choicesBorderEnabled: event.target.checked })}
+          />
+          Show choice border
+        </label>
+        <details className="choice-frame-details">
+          <summary>Choice button styles</summary>
+          <div className="choice-frame-grid">
+            <button
+              type="button"
+              className={`choice-frame-option choice-frame-none ${
+                style.choicesFrameStyle === "none" ? "active" : ""
+              }`}
+              onClick={() => patchStyle({ choicesFrameStyle: "none" })}
+            >
+              No frame
+            </button>
+            {CHOICE_BUTTON_FRAMES.map((frame, index) => (
+              <button
+                type="button"
+                key={frame.id}
+                className={`choice-frame-option ${
+                  style.choicesFrameStyle === frame.id ? "active" : ""
+                }`}
+                style={getChoiceButtonFrameStyle(frame.id)}
+                onClick={() => patchStyle({ choicesFrameStyle: frame.id })}
+                aria-label={frame.label}
+                title={frame.label}
+              >
+                <span>{index + 1}</span>
+              </button>
+            ))}
+          </div>
+        </details>
         <label className="checkbox-field">
           <input
             type="checkbox"
@@ -2249,6 +2654,7 @@ interface ScenePreviewModalProps {
   projectTheme: ProjectTheme;
   onUpdateScene: (updater: (scene: Scene) => Scene) => void;
   onSelectScene: (sceneId: SceneId) => void;
+  onApplySceneLayoutToAll: (scene: Scene) => void;
   onClose: () => void;
 }
 
@@ -2258,9 +2664,11 @@ function ScenePreviewModal({
   projectTheme,
   onUpdateScene,
   onSelectScene,
+  onApplySceneLayoutToAll,
   onClose
 }: ScenePreviewModalProps) {
   const [draftScene, setDraftScene] = useState(scene);
+  const [saveMessage, setSaveMessage] = useState("");
   const draftSceneRef = useRef(scene);
   const sceneIndex = scenes.findIndex((item) => item.id === scene.id);
   const previousScene = sceneIndex > 0 ? scenes[sceneIndex - 1] : null;
@@ -2295,6 +2703,7 @@ function ScenePreviewModal({
           <div className="scene-layout-heading-copy">
             <h2>Scene Layout</h2>
             <p>{draftScene.title || draftScene.id}</p>
+            {saveMessage && <p className="helper-text">{saveMessage}</p>}
           </div>
           <div className="scene-layout-scene-navigation" role="group" aria-label="Scene navigation">
             <button
@@ -2324,6 +2733,30 @@ function ScenePreviewModal({
           <div className="modal-heading-actions">
             <button
               type="button"
+              disabled={
+                draftScene.imagePath.trim() === "" ||
+                draftScene.visualMediaType !== "image"
+              }
+              onClick={() => {
+                setSaveMessage("");
+                void savePicture(
+                  draftScene.imagePath,
+                  draftScene.title || draftScene.id
+                )
+                  .then((result) => {
+                    if (result === "saved") setSaveMessage("Picture saved.");
+                  })
+                  .catch((error) =>
+                    setSaveMessage(
+                      error instanceof Error ? error.message : "Could not save picture."
+                    )
+                  );
+              }}
+            >
+              Save Picture
+            </button>
+            <button
+              type="button"
               onClick={() =>
                 updateDraftScene((currentScene) => ({
                   ...currentScene,
@@ -2332,6 +2765,13 @@ function ScenePreviewModal({
               }
             >
               Reset
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => onApplySceneLayoutToAll(draftSceneRef.current)}
+            >
+              Apply to all scenes
             </button>
             <button type="button" onClick={onClose}>
               Close
@@ -2353,11 +2793,13 @@ function getPanelVisualStyle({
   transparent,
   color,
   borderColor,
+  borderEnabled,
   opacity
 }: {
   transparent: boolean;
   color: string;
   borderColor: string;
+  borderEnabled: boolean;
   opacity: number;
 }): CSSProperties {
   if (transparent || opacity <= 0) {
@@ -2371,22 +2813,16 @@ function getPanelVisualStyle({
 
   return {
     background: colorToRgba(color, opacity),
-    borderColor: colorToRgba(borderColor, Math.min(1, Math.max(0.12, opacity))),
+    ...(borderEnabled
+      ? { borderColor: colorToRgba(borderColor, Math.min(1, Math.max(0.12, opacity))) }
+      : { border: 0 }),
     boxShadow: opacity < 0.08 ? "none" : undefined,
     backdropFilter: "none"
   };
 }
 
 function colorToRgba(color: string, opacity: number): string {
-  const normalized = color.trim();
-  if (!/^#[0-9a-fA-F]{6}$/.test(normalized)) {
-    return normalized;
-  }
-
-  const red = Number.parseInt(normalized.slice(1, 3), 16);
-  const green = Number.parseInt(normalized.slice(3, 5), 16);
-  const blue = Number.parseInt(normalized.slice(5, 7), 16);
-  return `rgba(${red}, ${green}, ${blue}, ${clampNumber(opacity, 0, 1)})`;
+  return applyColorOpacity(color, opacity);
 }
 
 function ColorControl({
@@ -2882,11 +3318,15 @@ function clampNumber(value: number, min: number, max: number): number {
 
 function SceneImageSection({
   imagePath,
-  onImagePathChange
+  mediaType,
+  videoLoop,
+  sceneName,
+  onMediaChange,
+  onVideoLoopChange
 }: SceneImageSectionProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [message, setMessage] = useState("");
-  const hasImage = imagePath.trim() !== "";
+  const hasMedia = imagePath.trim() !== "";
 
   async function selectImage() {
     setMessage("");
@@ -2899,10 +3339,10 @@ function SceneImageSection({
     try {
       const result = await window.storyLife.selectImage();
       if (!result.canceled) {
-        onImagePathChange(result.filePath);
+        onMediaChange(result.filePath, result.mediaType);
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Image picker failed.");
+      setMessage(error instanceof Error ? error.message : "Media picker failed.");
     }
   }
 
@@ -2912,7 +3352,7 @@ function SceneImageSection({
         ref={fileInputRef}
         className="hidden-file-input"
         type="file"
-        accept=".png,.jpg,.jpeg,.webp,.gif,image/png,image/jpeg,image/webp,image/gif"
+        accept=".png,.jpg,.jpeg,.webp,.gif,.mp4,.webm,.mov,.m4v,image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
         onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = "";
@@ -2922,43 +3362,122 @@ function SceneImageSection({
           const reader = new FileReader();
           reader.addEventListener("load", () => {
             if (typeof reader.result === "string") {
-              onImagePathChange(reader.result);
-              setMessage("Image embedded into this project for web/iPad testing.");
+              onMediaChange(
+                reader.result,
+                file.type.startsWith("video/") ? "video" : "image"
+              );
+              setMessage("Media embedded into this project.");
             }
           });
           reader.readAsDataURL(file);
         }}
       />
       <div className="inspector-image-preview-frame">
-        {hasImage ? (
-          <InspectorImagePreview imagePath={imagePath} />
+        {hasMedia ? (
+          <InspectorVisualPreview
+            key={`${mediaType}:${imagePath}`}
+            mediaPath={imagePath}
+            mediaType={mediaType}
+            videoLoop={videoLoop}
+          />
         ) : (
-          <span>No image selected</span>
+          <span>No picture or video selected</span>
         )}
       </div>
-      <input
-        value={imagePath}
-        placeholder="No image selected"
-        onChange={(event) => onImagePathChange(event.target.value)}
-      />
+      {isEmbeddedMediaPath(imagePath) ? (
+        <div className="embedded-media-label">
+          Embedded {mediaType === "video" ? "video" : "image"}
+        </div>
+      ) : (
+        <input
+          value={imagePath}
+          placeholder="No picture or video selected"
+          onChange={(event) => {
+            const nextPath = event.target.value;
+            onMediaChange(nextPath, inferVisualMediaType(nextPath));
+          }}
+        />
+      )}
+      {mediaType === "video" && hasMedia && (
+        <label className="checkbox-label scene-video-loop-toggle">
+          <input
+            type="checkbox"
+            checked={videoLoop}
+            onChange={(event) => onVideoLoopChange(event.target.checked)}
+          />
+          <span>Loop video</span>
+        </label>
+      )}
       <div className="image-actions">
         <button
           type="button"
           onClick={selectImage}
         >
-          {hasImage ? "Change Image" : "Select Image"}
+          {hasMedia ? "Change Media" : "Select Media"}
+        </button>
+        <button
+          type="button"
+          disabled={!hasMedia || mediaType !== "image"}
+          onClick={() => {
+            setMessage("");
+            void savePicture(imagePath, sceneName)
+              .then((result) => {
+                if (result === "saved") setMessage("Picture saved.");
+              })
+              .catch((error) =>
+                setMessage(error instanceof Error ? error.message : "Could not save picture.")
+              );
+          }}
+        >
+          Save Picture
         </button>
         <button
           type="button"
           className="danger-button"
-          onClick={() => onImagePathChange("")}
-          disabled={!hasImage}
+          onClick={() => onMediaChange("", "image")}
+          disabled={!hasMedia}
         >
-          Remove Image
+          Remove Media
         </button>
       </div>
       {message && <p className="helper-text">{message}</p>}
     </section>
+  );
+}
+
+function InspectorVisualPreview({
+  mediaPath,
+  mediaType,
+  videoLoop,
+  className = "inspector-image-preview",
+  style,
+  fallback = <span>Media file is missing</span>
+}: {
+  mediaPath: string;
+  mediaType: SceneVisualMediaType;
+  videoLoop: boolean;
+  className?: string;
+  style?: CSSProperties;
+  fallback?: ReactNode;
+}) {
+  if (mediaType === "video") {
+    return (
+      <ResolvedVideoPreview
+        mediaPath={mediaPath}
+        loop={videoLoop}
+        className={className}
+        style={style}
+        fallback={fallback}
+      />
+    );
+  }
+  return (
+    <InspectorImagePreview
+      imagePath={mediaPath}
+      className={className}
+      style={style}
+      fallback={fallback}
+    />
   );
 }
 
@@ -2973,15 +3492,19 @@ function InspectorImagePreview({
   style?: CSSProperties;
   fallback?: ReactNode;
 }) {
-  const [previewSrc, setPreviewSrc] = useState(() => toImageSrc(imagePath));
+  const [previewSrc, setPreviewSrc] = useState(() => getInitialPreviewSrc(imagePath));
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     let isCurrent = true;
     setHasError(false);
-    setPreviewSrc(toImageSrc(imagePath));
+    setPreviewSrc(getInitialPreviewSrc(imagePath));
 
-    if (!window.storyLife?.readImagePreview) {
+    if (
+      !isLocalPath(imagePath) ||
+      window.storyLife?.getMediaUrl ||
+      !window.storyLife?.readImagePreview
+    ) {
       return () => {
         isCurrent = false;
       };
@@ -3015,6 +3538,10 @@ function InspectorImagePreview({
     return <>{fallback}</>;
   }
 
+  if (!previewSrc) {
+    return <span>Loading preview...</span>;
+  }
+
   return (
     <img
       className={className}
@@ -3022,9 +3549,86 @@ function InspectorImagePreview({
       src={previewSrc}
       alt=""
       draggable={false}
+      decoding="async"
+      onError={(event) => {
+        if (event.currentTarget.currentSrc === previewSrc) setHasError(true);
+      }}
+    />
+  );
+}
+
+function ResolvedVideoPreview({
+  mediaPath,
+  loop,
+  className,
+  style,
+  fallback
+}: {
+  mediaPath: string;
+  loop: boolean;
+  className: string;
+  style?: CSSProperties;
+  fallback: ReactNode;
+}) {
+  const [previewSrc, setPreviewSrc] = useState(() => getInitialPreviewSrc(mediaPath));
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    let isCurrent = true;
+    setHasError(false);
+    setPreviewSrc(getInitialPreviewSrc(mediaPath));
+    if (
+      !isLocalPath(mediaPath) ||
+      window.storyLife?.getMediaUrl ||
+      !window.storyLife?.readImagePreview
+    ) return () => { isCurrent = false; };
+    window.storyLife.readImagePreview(mediaPath).then((result) => {
+      if (!isCurrent) return;
+      if (result.ok) setPreviewSrc(result.dataUrl);
+      else if (isLocalPath(mediaPath)) setHasError(true);
+    }).catch(() => {
+      if (isCurrent && isLocalPath(mediaPath)) setHasError(true);
+    });
+    return () => { isCurrent = false; };
+  }, [mediaPath]);
+
+  if (hasError) return <>{fallback}</>;
+  if (!previewSrc) return <span>Loading preview...</span>;
+  return (
+    <video
+      className={className}
+      style={style}
+      src={previewSrc}
+      autoPlay
+      muted
+      playsInline
+      loop={loop}
+      preload="metadata"
       onError={() => setHasError(true)}
     />
   );
+}
+
+function getInitialPreviewSrc(mediaPath: string): string {
+  if (isLocalPath(mediaPath)) {
+    if (window.storyLife?.getMediaUrl) {
+      return window.storyLife.getMediaUrl(mediaPath);
+    }
+    if (window.storyLife?.readImagePreview) {
+      return "";
+    }
+  }
+  return toImageSrc(mediaPath);
+}
+
+function inferVisualMediaType(mediaPath: string): SceneVisualMediaType {
+  return /^(?:data:video\/)|\.(?:mp4|webm|mov|m4v)(?:[?#].*)?$/i.test(mediaPath.trim())
+    ? "video"
+    : "image";
+}
+
+function isEmbeddedMediaPath(mediaPath: string): boolean {
+  return mediaPath.trim().startsWith("data:");
 }
 
 interface MediaPickerSectionProps {

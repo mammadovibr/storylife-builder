@@ -386,7 +386,7 @@ function MediaPoolSection({
     }
 
     const acceptedFiles = Array.from(files).filter((file) =>
-      /^(image\/(png|jpeg|webp|gif)|audio\/(mpeg|wav|ogg|mp4|webm))$/.test(
+      /^(image\/(png|jpeg|webp|gif)|video\/(mp4|webm|quicktime)|audio\/(mpeg|wav|ogg|mp4|webm))$/.test(
         file.type
       )
     );
@@ -409,7 +409,9 @@ function MediaPoolSection({
                   id: `media_asset_${Date.now()}_${index}`,
                   name: file.name,
                   path: reader.result,
-                  type: file.type.startsWith("audio/") ? "audio" : "image"
+                  type: file.type.startsWith("audio/")
+                    ? "audio"
+                    : file.type.startsWith("video/") ? "video" : "image"
                 });
               }
               resolve();
@@ -437,14 +439,14 @@ function MediaPoolSection({
         className="hidden-file-input"
         type="file"
         multiple
-        accept=".png,.jpg,.jpeg,.webp,.gif,.mp3,.wav,.ogg,.m4a,.webm,image/png,image/jpeg,image/webp,image/gif,audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/webm"
+        accept=".png,.jpg,.jpeg,.webp,.gif,.mp4,.webm,.mov,.m4v,.mp3,.wav,.ogg,.m4a,image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/webm"
         onChange={(event) => {
           addWebFiles(event.target.files);
           event.target.value = "";
         }}
       />
       {mediaLibrary.folders.length === 0 && (
-        <p className="empty-state">Add folders with images, gif and sounds.</p>
+        <p className="empty-state">Add folders with pictures, videos and sounds.</p>
       )}
       {usedAssets.length > 0 && (
         <div className="manager-item collapsible-item media-used-folder">
@@ -582,7 +584,7 @@ function MediaAssetGrid({
               : "Select a node before applying"
           }
           onClick={() => {
-            if (asset.type === "image") {
+            if (asset.type === "image" || asset.type === "video") {
               onPreviewAsset(asset);
             }
           }}
@@ -600,6 +602,8 @@ function MediaAssetGrid({
           <span className="media-thumb">
             {asset.type === "image" ? (
               <img src={toMediaSrc(asset.path)} alt="" loading="lazy" />
+            ) : asset.type === "video" ? (
+              <video src={toMediaSrc(asset.path)} muted preload="metadata" />
             ) : (
               <span className="audio-thumb">Audio</span>
             )}
@@ -641,7 +645,19 @@ function MediaPreviewModal({
           </button>
         </div>
         <div className="media-preview-image-box">
-          <img className="media-preview-large-image" src={toMediaSrc(asset.path)} alt="" />
+          {asset.type === "video" ? (
+            <video
+              className="media-preview-large-image"
+              src={toMediaSrc(asset.path)}
+              autoPlay
+              muted
+              playsInline
+              loop
+              controls
+            />
+          ) : (
+            <img className="media-preview-large-image" src={toMediaSrc(asset.path)} alt="" />
+          )}
         </div>
         <div className="media-preview-actions">
           <button type="button" onClick={onApply} disabled={!selectedScene}>

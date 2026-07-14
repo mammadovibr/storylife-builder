@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "dev:web": "vite --host 127.0.0.1 --port 5173 --strictPort",
-    "dev": "node scripts/build-app.cjs && node scripts/build-player.cjs && tsc -p electron/tsconfig.json && concurrently -k \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"wait-on tcp:5173 && electron .\"",
+    "dev": "node scripts/dev.cjs",
     "build": "node scripts/build-app.cjs && node scripts/build-player.cjs && tsc -p electron/tsconfig.json",
     "build:ipad": "node scripts/build-ipad.cjs",
     "verify:ipad": "node scripts/verify-ipad-build.cjs",

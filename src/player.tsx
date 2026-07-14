@@ -82,16 +82,6 @@ function ExportedGame() {
     void sceneAudio.play().catch(() => {});
   }, [currentScene?.id, currentScene?.soundPath, currentScene?.soundVolume]);
 
-  useEffect(() => {
-    updateScale();
-    window.addEventListener("resize", updateScale);
-    window.addEventListener("orientationchange", updateScale);
-    return () => {
-      window.removeEventListener("resize", updateScale);
-      window.removeEventListener("orientationchange", updateScale);
-    };
-  }, [currentScene?.id]);
-
   if (error) {
     return <main className="export-error">{error}</main>;
   }
@@ -130,22 +120,17 @@ function ExportedGame() {
       {currentScene.soundPath.trim() !== "" && (
         <audio ref={sceneAudioRef} src={toMediaSrc(currentScene.soundPath)} />
       )}
-      <div className="export-phone-scale">
+      <div className="export-game-viewport">
         <ScenePhone
           project={project}
           scene={currentScene}
           visibleChoices={visibleChoices}
           onChoice={handleChoice}
+          displayMode="export"
         />
       </div>
     </main>
   );
-}
-
-function updateScale() {
-  const viewportWidth = Math.max(1, window.innerWidth);
-  const scale = Math.min(1, viewportWidth / 390);
-  document.documentElement.style.setProperty("--storylife-export-scale", String(scale));
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

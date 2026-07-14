@@ -7,15 +7,25 @@ export function extractRequestedSceneCount(prompt: string): number | null {
     .trim();
   const latestCounts = collectSceneCounts(latestInstruction);
   if (latestCounts.length > 0) {
-    return Math.max(...latestCounts);
+    return latestCounts[0];
+  }
+
+  const markedInstructions = [...prompt.matchAll(/LATEST BUILD INSTRUCTION:\s*/gi)];
+  for (const marker of markedInstructions.reverse()) {
+    const markerEnd = (marker.index ?? 0) + marker[0].length;
+    const instruction = prompt
+      .slice(markerEnd)
+      .split(/\n\n(?=(?:PERSISTENT STORY MEMORY|RECENT STORY DISCUSSION|IMPORTANT:)\b)/i)[0];
+    const markedCounts = collectSceneCounts(instruction);
+    if (markedCounts.length > 0) return markedCounts[0];
   }
 
   const allCounts = collectSceneCounts(prompt);
-  return allCounts.length > 0 ? Math.max(...allCounts) : null;
+  return allCounts.length > 0 ? allCounts[0] : null;
 }
 
 function collectSceneCounts(value: string): number[] {
-  const counts: number[] = [];
+  const matches: Array<{ count: number; index: number }> = [];
   const rangeBeforeWord = new RegExp(
     `(\\d{1,4})\\s*(?:-|\\u2013|\\u2014|\\u0434\\u043e)\\s*(\\d{1,4})\\s*${SCENE_WORD_PATTERN}`,
     "giu"
@@ -30,14 +40,17 @@ function collectSceneCounts(value: string): number[] {
   );
 
   for (const match of value.toLowerCase().matchAll(rangeBeforeWord)) {
-    counts.push(Number(match[1]), Number(match[2]));
+    matches.push({ count: Number(match[2]), index: match.index ?? 0 });
   }
   for (const match of value.toLowerCase().matchAll(countBeforeWord)) {
-    counts.push(Number(match[1]));
+    matches.push({ count: Number(match[1]), index: match.index ?? 0 });
   }
   for (const match of value.toLowerCase().matchAll(wordBeforeCount)) {
-    counts.push(Number(match[1]));
+    matches.push({ count: Number(match[1]), index: match.index ?? 0 });
   }
 
-  return counts.filter((count) => Number.isInteger(count) && count >= 1 && count <= 2000);
+  return matches
+    .filter(({ count }) => Number.isInteger(count) && count >= 1 && count <= 2000)
+    .sort((left, right) => left.index - right.index)
+    .map(({ count }) => count);
 }

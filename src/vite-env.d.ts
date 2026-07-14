@@ -2,15 +2,21 @@
 
 type SaveProjectResult =
   | { canceled: true }
-  | { canceled: false; filePath: string };
+  | { canceled: false; filePath: string; verified: true; byteSize: number };
 
 type LoadProjectResult =
   | { canceled: true }
-  | { canceled: false; filePath: string; contents: string };
+  | { canceled: false; filePath: string; contents: string; canOverwrite: boolean };
+
+interface SaveProjectOptions {
+  filePath?: string;
+  suggestedName?: string;
+  saveAs?: boolean;
+}
 
 type SelectImageResult =
   | { canceled: true }
-  | { canceled: false; filePath: string };
+  | { canceled: false; filePath: string; mediaType: "image" | "video" };
 
 type SelectAudioResult =
   | { canceled: true }
@@ -32,7 +38,7 @@ type SelectMediaFolderResult =
           id: string;
           name: string;
           path: string;
-          type: "image" | "audio";
+          type: "image" | "video" | "audio";
         }>;
       };
     };
@@ -54,10 +60,20 @@ type AIImageResult = { ok: true; filePath: string };
 
 interface Window {
   storyLife?: {
-    saveProject(projectJson: string): Promise<SaveProjectResult>;
+    confirmClose(): Promise<{ ok: boolean }>;
+    onCloseRequested(callback: () => void): () => void;
+    saveProject(
+      projectJson: string,
+      options?: SaveProjectOptions
+    ): Promise<SaveProjectResult>;
     loadProject(): Promise<LoadProjectResult>;
     selectImage(): Promise<SelectImageResult>;
+    getMediaUrl(mediaPath: string): string;
     readImagePreview(imagePath: string): Promise<ImagePreviewResult>;
+    savePicture(
+      imagePath: string,
+      suggestedName: string
+    ): Promise<{ canceled: true } | { canceled: false; filePath: string }>;
     selectAudio(): Promise<SelectAudioResult>;
     selectMediaFolder(): Promise<SelectMediaFolderResult>;
     exportGame(projectJson: string): Promise<ExportGameResult>;
@@ -181,11 +197,13 @@ interface Window {
       }) => void
     ): () => void;
     aiGenerateSceneImage(payload: {
-      sceneJson: string;
       prompt: string;
       referenceImagePaths?: string[];
       imageModel?: string;
       imageSize?: string;
+      imageQuality?: "low" | "medium" | "high";
+      preserveReferenceCanvas?: boolean;
+      requestId?: string;
     }): Promise<AIImageResult>;
     aiCancel(requestId: string): Promise<{ ok: true }>;
   };
