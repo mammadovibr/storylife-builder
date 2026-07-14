@@ -20,6 +20,7 @@ import {
   createChoiceOutcome,
   createDefaultProject,
   createFlag,
+  createFlagEffect,
   createParameter,
   createScene,
   FlagId,
@@ -60,6 +61,7 @@ export default function App() {
   const [isProjectSettingsOpen, setProjectSettingsOpen] = useState(false);
   const [isAIAssistantOpen, setAIAssistantOpen] = useState(false);
   const [isProjectManagerOpen, setProjectManagerOpen] = useState(true);
+  const [isNewProjectNameOpen, setNewProjectNameOpen] = useState(false);
   const [projectManagerRevision, setProjectManagerRevision] = useState(0);
   const [inspectorSessionRevision, setInspectorSessionRevision] = useState(0);
   const [isCloseDialogOpen, setCloseDialogOpen] = useState(false);
@@ -811,6 +813,52 @@ export default function App() {
     });
   }
 
+  function createFlagForChoiceEffect(
+    sceneId: SceneId,
+    choiceId: string,
+    requestedKey: string
+  ) {
+    const key = requestedKey.trim();
+    if (!key) {
+      return;
+    }
+
+    commitProjectChange((currentProject) => {
+      const flagNumber = getNextNumericId("flag", currentProject.flags);
+      const flag = {
+        ...createFlag(flagNumber, `flag_${flagNumber}`),
+        key
+      };
+
+      return {
+        ...currentProject,
+        flags: [...currentProject.flags, flag],
+        scenes: currentProject.scenes.map((scene) =>
+          scene.id === sceneId
+            ? {
+                ...scene,
+                choices: scene.choices.map((choice) =>
+                  choice.id === choiceId
+                    ? {
+                        ...choice,
+                        effects: [
+                          ...choice.effects,
+                          createFlagEffect(
+                            flag.id,
+                            `effect_${getNextNumericId("effect", choice.effects)}`
+                          )
+                        ]
+                      }
+                    : choice
+                )
+              }
+            : scene
+        )
+      };
+    });
+    setStatus(`Flag "${key}" created and added to choice effects`);
+  }
+
   function updateFlag(flagId: FlagId, patch: Partial<StoryFlag>) {
     commitProjectChange((currentProject) => ({
       ...currentProject,
@@ -1059,7 +1107,17 @@ export default function App() {
       return;
     }
 
+    setNewProjectNameOpen(true);
+  }
+
+  function confirmNewProject(projectName: string) {
+    const trimmedProjectName = projectName.trim();
+    if (!trimmedProjectName) {
+      return;
+    }
+
     const nextProject = createDefaultProject();
+    nextProject.projectName = trimmedProjectName;
     currentProjectFilePathRef.current = null;
     setProject(nextProject);
     setInspectorSessionRevision((revision) => revision + 1);
@@ -1070,7 +1128,8 @@ export default function App() {
     setProjectSettingsOpen(false);
     localStorage.removeItem(AUTOSAVE_KEY);
     setSaveState("saved");
-    setStatus("New project created");
+    setStatus(`Project "${trimmedProjectName}" created`);
+    setNewProjectNameOpen(false);
     setProjectManagerOpen(false);
   }
 
@@ -1356,6 +1415,7 @@ export default function App() {
               onUpdateScene={updateScene}
               onAddChoice={addChoice}
               onAddChoiceWithScene={addChoiceWithScene}
+              onCreateFlagForChoiceEffect={createFlagForChoiceEffect}
               onDeleteScene={deleteScene}
               onPickChoiceTarget={(sceneId, choiceId) => {
                 setPendingChoiceTarget({ sceneId, choiceId });
@@ -1415,6 +1475,12 @@ export default function App() {
           onClose={() => setProjectManagerOpen(false)}
         />
       )}
+      {isNewProjectNameOpen && (
+        <NewProjectNameModal
+          onCreate={confirmNewProject}
+          onCancel={() => setNewProjectNameOpen(false)}
+        />
+      )}
       {isCloseDialogOpen && (
         <CloseApplicationModal
           isSaving={isClosingApplication}
@@ -1423,6 +1489,54 @@ export default function App() {
           onCancel={() => setCloseDialogOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+function NewProjectNameModal({
+  onCreate,
+  onCancel
+}: {
+  onCreate: (projectName: string) => void;
+  onCancel: () => void;
+}) {
+  const [projectName, setProjectName] = useState("");
+
+  return (
+    <div className="modal-backdrop new-project-name-backdrop" role="presentation">
+      <form
+        className="new-project-name-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-project-name-title"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onCreate(projectName);
+        }}
+      >
+        <h2 id="new-project-name-title">Create New Project</h2>
+        <label className="field-label">
+          Project name
+          <input
+            autoFocus
+            value={projectName}
+            onChange={(event) => setProjectName(event.target.value)}
+            placeholder="My interactive story"
+          />
+        </label>
+        <div className="new-project-name-actions">
+          <button
+            type="submit"
+            className="primary-button"
+            disabled={!projectName.trim()}
+          >
+            Create Project
+          </button>
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

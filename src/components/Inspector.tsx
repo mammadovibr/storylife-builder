@@ -58,6 +58,11 @@ interface InspectorProps {
   ) => void;
   onAddChoice: (sceneId: SceneId) => void;
   onAddChoiceWithScene: (sceneId: SceneId) => void;
+  onCreateFlagForChoiceEffect: (
+    sceneId: SceneId,
+    choiceId: string,
+    flagKey: string
+  ) => void;
   onDeleteScene: (sceneId: SceneId) => void;
   onPickChoiceTarget: (sceneId: SceneId, choiceId: string) => void;
   onSelectScene: (sceneId: SceneId) => void;
@@ -77,6 +82,7 @@ export function Inspector({
   onUpdateScene,
   onAddChoice,
   onAddChoiceWithScene,
+  onCreateFlagForChoiceEffect,
   onDeleteScene,
   onPickChoiceTarget,
   onSelectScene,
@@ -557,6 +563,13 @@ export function Inspector({
                       ]
                     });
                   }}
+                  onCreateFlagEffect={(flagKey) =>
+                    onCreateFlagForChoiceEffect(
+                      selectedScene.id,
+                      choice.id,
+                      flagKey
+                    )
+                  }
                   onUpdateEffect={(effectId, patch) =>
                     updateChoiceEffect(choice.id, effectId, patch)
                   }
@@ -3912,6 +3925,7 @@ function ChoiceOutcomesEditor({
 interface ChoiceEffectsEditorProps extends ChoiceLogicEditorProps {
   onAddParameterEffect: () => void;
   onAddFlagEffect: () => void;
+  onCreateFlagEffect: (flagKey: string) => void;
   onUpdateEffect: (effectId: string, patch: Partial<ChoiceEffect>) => void;
   onDeleteEffect: (effectId: string) => void;
 }
@@ -3922,9 +3936,24 @@ function ChoiceEffectsEditor({
   flags,
   onAddParameterEffect,
   onAddFlagEffect,
+  onCreateFlagEffect,
   onUpdateEffect,
   onDeleteEffect
 }: ChoiceEffectsEditorProps) {
+  const [isFlagCreatorOpen, setFlagCreatorOpen] = useState(false);
+  const [newFlagKey, setNewFlagKey] = useState("");
+
+  function submitNewFlag() {
+    const flagKey = newFlagKey.trim();
+    if (!flagKey) {
+      return;
+    }
+
+    onCreateFlagEffect(flagKey);
+    setNewFlagKey("");
+    setFlagCreatorOpen(false);
+  }
+
   return (
     <section className="choice-logic-section">
       <div className="choice-logic-heading">
@@ -3937,11 +3966,53 @@ function ChoiceEffectsEditor({
           >
             + Parameter
           </button>
-          <button type="button" onClick={onAddFlagEffect} disabled={flags.length === 0}>
+          <button
+            type="button"
+            onClick={() => {
+              if (flags.length === 0) {
+                setFlagCreatorOpen(true);
+                return;
+              }
+              onAddFlagEffect();
+            }}
+          >
             + Flag
           </button>
         </div>
       </div>
+      {isFlagCreatorOpen && (
+        <form
+          className="quick-flag-popover"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitNewFlag();
+          }}
+        >
+          <label>
+            New flag name
+            <input
+              autoFocus
+              value={newFlagKey}
+              onChange={(event) => setNewFlagKey(event.target.value)}
+              placeholder="example: helped_friend"
+            />
+          </label>
+          <div>
+            <button type="submit" className="primary-button" disabled={!newFlagKey.trim()}>
+              Create
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setNewFlagKey("");
+                setFlagCreatorOpen(false);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
       {choice.effects.length === 0 && (
         <p className="empty-state">No effects.</p>
       )}

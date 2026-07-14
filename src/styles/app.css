@@ -332,6 +332,34 @@ textarea {
   background: rgba(20, 18, 15, 0.58);
 }
 
+.new-project-name-backdrop {
+  z-index: 15000;
+  background: rgba(20, 18, 15, 0.62);
+}
+
+.new-project-name-modal {
+  display: grid;
+  gap: 16px;
+  width: min(420px, calc(100vw - 32px));
+  border: 1px solid #d4ccbe;
+  border-radius: 10px;
+  background: #fdfbf7;
+  box-shadow: 0 28px 90px rgba(49, 43, 35, 0.3);
+  color: #24231f;
+  padding: 22px;
+}
+
+.new-project-name-modal h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.new-project-name-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
 .close-application-modal {
   display: grid;
   gap: 14px;
@@ -1320,9 +1348,44 @@ textarea {
 .manager-item,
 .choice-logic-section {
   display: grid;
+  position: relative;
   gap: 10px;
   border-top: 1px solid #273241;
   padding-top: 10px;
+}
+
+.quick-flag-popover {
+  position: absolute;
+  z-index: 30;
+  top: 38px;
+  right: 0;
+  display: grid;
+  gap: 8px;
+  width: min(230px, 100%);
+  border: 1px solid #b9a98f;
+  border-radius: 8px;
+  background: #fffdf8;
+  box-shadow: 0 14px 32px rgba(54, 45, 35, 0.24);
+  padding: 10px;
+}
+
+.quick-flag-popover label {
+  display: grid;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.quick-flag-popover input {
+  min-width: 0;
+  height: 34px;
+  padding: 6px 8px;
+}
+
+.quick-flag-popover > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
 }
 
 .collapsible-item {
@@ -3273,57 +3336,65 @@ textarea {
 .scene-transition-stage.is-transitioning.scene-transition-stage-pageTurn
   .is-outgoing
   > .play-card-exact {
+  --page-curl-progress: 0;
+  clip-path: polygon(
+    0 0,
+    clamp(0%, calc((200 - var(--page-curl-progress)) * 1%), 100%) 0,
+    clamp(0%, calc((200 - var(--page-curl-progress)) * 1%), 100%)
+      clamp(0%, calc((100 - var(--page-curl-progress)) * 1%), 100%),
+    clamp(0%, calc((100 - var(--page-curl-progress)) * 1%), 100%)
+      clamp(0%, calc((200 - var(--page-curl-progress)) * 1%), 100%),
+    0 clamp(0%, calc((200 - var(--page-curl-progress)) * 1%), 100%)
+  );
   animation: scene-page-corner-peel var(--scene-transition-duration)
-    cubic-bezier(0.18, 0.72, 0.16, 1) both;
+    cubic-bezier(0.22, 0.61, 0.36, 1) both;
   backface-visibility: hidden;
   transform-origin: left top;
   will-change: clip-path, filter, transform;
 }
 
-.scene-transition-stage-pageTurn .is-outgoing::before,
-.scene-transition-stage-pageTurn .is-outgoing::after {
+.scene-page-curl-back {
   position: absolute;
-  z-index: 20;
-  content: "";
-  pointer-events: none;
-}
-
-.scene-transition-stage-pageTurn .is-outgoing::before {
-  z-index: 22;
-  right: -3%;
-  bottom: -3%;
+  z-index: 6;
+  right: -1%;
+  bottom: -1%;
   width: 58%;
   aspect-ratio: 1;
+  overflow: hidden;
   border-radius: 100% 0 0 8%;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0 46%, rgba(255, 253, 244, 0.96) 48% 58%, rgba(218, 210, 193, 0.98) 72%, rgba(117, 104, 86, 0.9) 100%),
-    radial-gradient(circle at 12% 14%, #fffef8 0 18%, #ded6c7 58%, #887862 100%);
   box-shadow:
-    -22px -20px 34px rgba(24, 20, 16, 0.28),
-    inset 18px 16px 28px rgba(255, 255, 255, 0.55),
-    inset -16px -18px 24px rgba(64, 52, 39, 0.22);
+    -18px -16px 30px rgba(18, 15, 12, 0.34),
+    inset 15px 14px 24px rgba(255, 255, 255, 0.12),
+    inset -14px -16px 22px rgba(18, 15, 12, 0.32);
+  pointer-events: none;
   transform-origin: right bottom;
-  animation: scene-page-corner-sheet var(--scene-transition-duration)
-    cubic-bezier(0.18, 0.72, 0.16, 1) both;
+  animation:
+    scene-page-curl-back-motion var(--scene-transition-duration)
+      cubic-bezier(0.22, 0.61, 0.36, 1) both,
+    scene-page-curl-back-opacity var(--scene-transition-duration) linear both;
+  will-change: transform, opacity;
 }
 
-.scene-transition-stage-pageTurn .is-outgoing::after {
-  z-index: 21;
-  right: -8%;
-  bottom: -6%;
-  width: 64%;
-  aspect-ratio: 1;
-  border-radius: 100% 0 0;
-  background: radial-gradient(
-    ellipse at 100% 100%,
-    rgba(16, 13, 10, 0.52) 0 8%,
-    rgba(16, 13, 10, 0.3) 24%,
-    transparent 66%
-  );
-  filter: blur(8px);
-  transform-origin: right bottom;
-  animation: scene-page-corner-shadow var(--scene-transition-duration)
-    cubic-bezier(0.18, 0.72, 0.16, 1) both;
+.scene-page-curl-back > .play-card-exact {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 172.5%;
+  max-width: none;
+  filter: brightness(0.62) saturate(0.72) contrast(0.92);
+  opacity: 0.88;
+  transform: scaleX(-1);
+  transform-origin: center;
+}
+
+.scene-page-curl-back::after {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(16, 13, 10, 0.1) 0 42%, rgba(255, 255, 255, 0.1) 50%, rgba(16, 13, 10, 0.28) 100%),
+    radial-gradient(circle at 10% 12%, transparent 0 28%, rgba(12, 10, 8, 0.22) 100%);
+  content: "";
 }
 
 @keyframes scene-layer-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -3343,26 +3414,20 @@ textarea {
 @keyframes scene-layer-push-down-in { from { transform: translateY(-100%); } to { transform: translateY(0); } }
 @keyframes scene-layer-push-down-out { from { transform: translateY(0); } to { transform: translateY(30%); } }
 
+@property --page-curl-progress {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
 @keyframes scene-page-corner-peel {
-  0% {
-    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  from {
+    --page-curl-progress: 0;
     filter: brightness(1);
     transform: translateZ(0);
   }
-  18% {
-    clip-path: polygon(0 0, 100% 0, 100% 82%, 86% 100%, 0 100%);
-    filter: brightness(0.98);
-  }
-  46% {
-    clip-path: polygon(0 0, 100% 0, 100% 42%, 57% 100%, 0 100%);
-    filter: brightness(0.93);
-  }
-  72% {
-    clip-path: polygon(0 0, 73% 0, 18% 100%, 0 100%);
-    filter: brightness(0.86);
-  }
-  100% {
-    clip-path: polygon(0 0, 0 0, 0 100%, 0 100%);
+  to {
+    --page-curl-progress: 200;
     filter: brightness(0.78);
     transform: translateZ(1px);
   }
@@ -3370,42 +3435,30 @@ textarea {
 
 @keyframes scene-layer-page-reveal {
   0% { transform: scale(0.99); filter: brightness(0.76); }
-  48% { filter: brightness(0.9); }
   100% { transform: scale(1); filter: brightness(1); }
 }
 
-@keyframes scene-page-corner-sheet {
-  0% {
-    opacity: 0;
-    transform: translate(48%, 48%) scale(0.06) rotate(0deg) skew(-3deg, -3deg);
+@keyframes scene-page-curl-back-motion {
+  from {
+    transform: translate(49%, 49%) scale(0.035) rotate(0deg) skew(-2deg, -2deg);
   }
-  14% { opacity: 1; }
-  48% {
-    opacity: 1;
-    transform: translate(-2%, -2%) scale(0.78) rotate(-3deg) skew(-6deg, -6deg);
-  }
-  78% {
-    opacity: 0.88;
-    transform: translate(-62%, -56%) scale(0.92) rotate(-9deg) skew(-9deg, -9deg);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-164%, -142%) scale(0.98) rotate(-16deg) skew(-11deg, -11deg);
+  to {
+    transform: translate(-164%, -142%) scale(0.98) rotate(-15deg) skew(-10deg, -10deg);
   }
 }
 
-@keyframes scene-page-corner-shadow {
-  0% { opacity: 0; transform: translate(45%, 45%) scale(0.08); }
-  18% { opacity: 0.72; }
-  55% { opacity: 0.58; transform: translate(-4%, -3%) scale(0.82); }
-  88% { opacity: 0.22; }
-  100% { opacity: 0; transform: translate(-148%, -130%) scale(1); }
+@keyframes scene-page-curl-back-opacity {
+  0% { opacity: 0; }
+  6% { opacity: 1; }
+  91% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .scene-transition-layer,
   .scene-transition-layer::before,
-  .scene-transition-layer::after {
+  .scene-transition-layer::after,
+  .scene-page-curl-back {
     animation-duration: 1ms !important;
   }
 }

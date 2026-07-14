@@ -81,6 +81,17 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
             onChoice={onChoice}
             displayMode={displayMode}
           />
+          {sceneTransition === "pageTurn" && (
+            <div className="scene-page-curl-back" aria-hidden="true">
+              <ScenePhone
+                project={project}
+                scene={outgoing.scene}
+                visibleChoices={outgoing.visibleChoices}
+                onChoice={onChoice}
+                displayMode={displayMode}
+              />
+            </div>
+          )}
         </div>
       )}
       <div

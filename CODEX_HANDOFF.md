@@ -331,6 +331,10 @@ airplane-mode startup and all 12 cached build files.
   `SceneStyle.sceneTransitionSpeed` is `0` for project inheritance or a per-scene
   0.5x-2x override. Both values migrate safely for old projects. Scene Layout has
   an explicit Project/default selector and a slider for each scene.
+- The page curl no longer uses stepped polygon keyframes or a white paper
+  placeholder. A registered numeric CSS property drives one continuous diagonal
+  peel, while `scene-page-curl-back` renders a real second `ScenePhone` for the
+  outgoing scene, mirrored horizontally and shaded as the back of the page.
 - Changing the transition in Project Settings resets every scene override to
   `sceneTransition: "project"`, so the global setting really applies everywhere.
   Scene Layout `Apply to all scenes` still copies an explicit per-scene transition
@@ -344,6 +348,12 @@ airplane-mode startup and all 12 cached build files.
   enough visible background to judge the global colors. It also exposes all 12
   ornate themes and applies the selected full style to every scene. Newly created
   scenes inherit the selected/source scene's layout and style.
+- Creating a project now opens a required project-name dialog. The trimmed name is
+  written into `project.projectName` before the project exists, so autosave, Save,
+  Save As, archives, backups, exports, and the toolbar all use the same name.
+- In a choice's Effects section, `+ Flag` remains enabled when the project has no
+  flags. It opens a small inline popover; submitting a name atomically creates the
+  project flag and appends a true flag effect to that choice.
 
 The standalone frontend command below currently reports older type errors in the legacy AI story code and some Inspector helpers:
 
