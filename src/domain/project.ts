@@ -212,10 +212,12 @@ export interface ProjectTheme {
   backgroundColor: string;
   textColor: string;
   sceneTransition: SceneTransition;
+  sceneTransitionSpeed: number;
 }
 
 export interface SceneStyle {
   sceneTransition: SceneTransitionOverride;
+  sceneTransitionSpeed: number;
   ornamentStyle: SceneOrnamentStyle;
   backgroundColor: string;
   textColor: string;
@@ -656,13 +658,15 @@ export function createDefaultProjectTheme(): ProjectTheme {
   return {
     backgroundColor: "#eee8dc",
     textColor: "#26231f",
-    sceneTransition: "fade"
+    sceneTransition: "fade",
+    sceneTransitionSpeed: 1
   };
 }
 
 export function createDefaultSceneStyle(): SceneStyle {
   return {
     sceneTransition: "project",
+    sceneTransitionSpeed: 0,
     ornamentStyle: "none",
     backgroundColor: "",
     textColor: "",
@@ -1072,7 +1076,12 @@ function validateProjectTheme(rawTheme: unknown): ProjectTheme {
   return {
     backgroundColor: readColor(rawTheme.backgroundColor, "#eee8dc"),
     textColor: readColor(rawTheme.textColor, "#26231f"),
-    sceneTransition: readSceneTransition(rawTheme.sceneTransition)
+    sceneTransition: readSceneTransition(rawTheme.sceneTransition),
+    sceneTransitionSpeed: clampNumber(
+      readNumber(rawTheme.sceneTransitionSpeed, 1),
+      0.5,
+      2
+    )
   };
 }
 
@@ -1433,9 +1442,14 @@ function validateSceneStyle(rawStyle: unknown): SceneStyle {
 
   const readLayoutOffset = (value: unknown, fallbackValue = 0) =>
     clampNumber(readNumber(value, fallbackValue), -2400, 2400);
+  const rawTransitionSpeed = readNumber(rawStyle.sceneTransitionSpeed, 0);
 
   return {
     sceneTransition: readSceneTransitionOverride(rawStyle.sceneTransition),
+    sceneTransitionSpeed:
+      rawTransitionSpeed <= 0
+        ? 0
+        : clampNumber(rawTransitionSpeed, 0.5, 2),
     ornamentStyle: readSceneOrnamentStyle(rawStyle.ornamentStyle),
     backgroundColor: readColor(rawStyle.backgroundColor, ""),
     textColor: readColor(rawStyle.textColor, ""),

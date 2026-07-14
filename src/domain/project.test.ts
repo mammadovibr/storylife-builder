@@ -56,6 +56,7 @@ describe("project domain", () => {
     expect(migratedProject.audio.musicFadeInSeconds).toBe(0.8);
     expect(migratedProject.theme.backgroundColor).toBe("#eee8dc");
     expect(migratedProject.theme.sceneTransition).toBe("fade");
+    expect(migratedProject.theme.sceneTransitionSpeed).toBe(1);
     expect(migratedProject.mediaLibrary.folders).toEqual([]);
     expect(migratedProject.storyBible.premise).toBe("");
     expect(migratedProject.storyBible.chapterPlan).toEqual([]);
@@ -69,6 +70,7 @@ describe("project domain", () => {
     expect(migratedProject.scenes[0].style.textScale).toBe(1);
     expect(migratedProject.scenes[0].style.showSceneTitle).toBe(true);
     expect(migratedProject.scenes[0].style.sceneTransition).toBe("project");
+    expect(migratedProject.scenes[0].style.sceneTransitionSpeed).toBe(0);
     expect(migratedProject.scenes[0].style.ornamentStyle).toBe("none");
     expect(migratedProject.scenes[0].choices[0].effects).toEqual([]);
     expect(migratedProject.scenes[0].choices[0].conditions).toEqual([]);
@@ -213,13 +215,17 @@ describe("project domain", () => {
   it("keeps project and per-scene transitions when loading a saved project", () => {
     const project = createDefaultProject();
     project.theme.sceneTransition = "crossfade";
+    project.theme.sceneTransitionSpeed = 1.7;
     project.scenes[0].style.sceneTransition = "pageTurn";
+    project.scenes[0].style.sceneTransitionSpeed = 0.6;
     project.scenes[0].style.ornamentStyle = "celestial";
 
     const migratedProject = migrateProject(JSON.parse(JSON.stringify(project)));
 
     expect(migratedProject.theme.sceneTransition).toBe("crossfade");
+    expect(migratedProject.theme.sceneTransitionSpeed).toBe(1.7);
     expect(migratedProject.scenes[0].style.sceneTransition).toBe("pageTurn");
+    expect(migratedProject.scenes[0].style.sceneTransitionSpeed).toBe(0.6);
     expect(migratedProject.scenes[0].style.ornamentStyle).toBe("celestial");
   });
 

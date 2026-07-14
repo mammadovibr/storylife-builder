@@ -315,14 +315,22 @@ airplane-mode startup and all 12 cached build files.
 - Canvas renders `node-drag-preview` as a fixed, pointer-independent copy of the
   scene node while React Flow is dragging. It sits at z-index 100000 and includes
   the current thumbnail, title, layout badge, node color, and scene-type outline.
-  Keep this fallback even if React Flow's `.dragging` node is styled as visible;
-  the library can remove its own node for individual drag frames.
+  The original React Flow `.dragging` node is deliberately transparent, so only
+  the copy under the cursor is visible and the old position does not look like a
+  duplicate. Keep the preview fallback; the library can remove its own node for
+  individual drag frames.
 - Scene changes use `TransitionedScenePhone`, which keeps outgoing and incoming
   scenes mounted as overlapping layers until the animation ends. Do not return to
   entry-only animation classes on `ScenePhone`; that produced a blank frame between
   scenes. Fade, crossfade, zooms, pushes, and Apple-style page curl all have paired
-  incoming/outgoing keyframes. Page curl reveals the already-rendered next scene
-  underneath a 3D turning page with a corner highlight and edge shadow.
+  incoming/outgoing keyframes. Page curl now starts at the bottom-right corner,
+  peels diagonally with a curved page underside and soft shadow, and is clipped to
+  the exact scene page instead of the whole Play layout. It reveals the already-
+  rendered next scene continuously underneath.
+- `ProjectTheme.sceneTransitionSpeed` stores the global 0.5x-2x animation speed.
+  `SceneStyle.sceneTransitionSpeed` is `0` for project inheritance or a per-scene
+  0.5x-2x override. Both values migrate safely for old projects. Scene Layout has
+  an explicit Project/default selector and a slider for each scene.
 - Changing the transition in Project Settings resets every scene override to
   `sceneTransition: "project"`, so the global setting really applies everywhere.
   Scene Layout `Apply to all scenes` still copies an explicit per-scene transition
@@ -333,7 +341,9 @@ airplane-mode startup and all 12 cached build files.
   ornament is visible for title, scene text, and choices. Vite inlines these SVGs
   into both editor and exported-player CSS, so exported games keep them offline.
 - Project Settings uses a compact 280x430 preview with short content cells, leaving
-  enough visible background to judge the global colors.
+  enough visible background to judge the global colors. It also exposes all 12
+  ornate themes and applies the selected full style to every scene. Newly created
+  scenes inherit the selected/source scene's layout and style.
 
 The standalone frontend command below currently reports older type errors in the legacy AI story code and some Inspector helpers:
 

@@ -27,6 +27,10 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
   const [outgoing, setOutgoing] = useState<ScenePhoneSnapshot | null>(null);
   const [transitionRevision, setTransitionRevision] = useState(0);
   const sceneTransition = resolveSceneTransition(project, scene);
+  const transitionDuration = getSceneTransitionDuration(
+    sceneTransition,
+    resolveSceneTransitionSpeed(project, scene)
+  );
 
   useLayoutEffect(() => {
     const previousSnapshot = latestSnapshotRef.current;
@@ -43,8 +47,8 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
     transitionTimerRef.current = window.setTimeout(() => {
       setOutgoing(null);
       transitionTimerRef.current = null;
-    }, getSceneTransitionDuration(sceneTransition));
-  }, [scene, sceneTransition, visibleChoices]);
+    }, transitionDuration + 50);
+  }, [scene, sceneTransition, transitionDuration, visibleChoices]);
 
   useEffect(
     () => () => {
@@ -60,6 +64,9 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
       className={`scene-transition-stage scene-transition-stage-${sceneTransition} ${
         outgoing ? "is-transitioning" : ""
       } ${displayMode === "export" ? "is-export" : "is-preview"}`}
+      style={{
+        "--scene-transition-duration": `${transitionDuration}ms`
+      } as CSSProperties}
     >
       {outgoing && (
         <div
@@ -171,8 +178,20 @@ function resolveSceneTransition(project: StoryProject, scene: Scene) {
     : scene.style.sceneTransition;
 }
 
-function getSceneTransitionDuration(transition: ReturnType<typeof resolveSceneTransition>) {
-  return transition === "pageTurn" ? 980 : transition === "crossfade" ? 720 : 640;
+function resolveSceneTransitionSpeed(project: StoryProject, scene: Scene) {
+  return scene.style.sceneTransitionSpeed > 0
+    ? scene.style.sceneTransitionSpeed
+    : project.theme.sceneTransitionSpeed;
+}
+
+function getSceneTransitionDuration(
+  transition: ReturnType<typeof resolveSceneTransition>,
+  speed: number
+) {
+  const safeSpeed = Math.min(2, Math.max(0.5, speed || 1));
+  const baseDuration =
+    transition === "pageTurn" ? 1250 : transition === "crossfade" ? 720 : 640;
+  return Math.round(baseDuration / safeSpeed);
 }
 
 function ExactSceneVisual({ scene, mediaSrc }: { scene: Scene; mediaSrc: string }) {

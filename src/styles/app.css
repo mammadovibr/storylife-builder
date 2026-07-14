@@ -567,7 +567,7 @@ textarea {
 .project-settings-modal {
   display: grid;
   gap: 16px;
-  width: min(720px, calc(100vw - 56px));
+  width: min(900px, calc(100vw - 56px));
   max-height: calc(100vh - 56px);
   overflow: auto;
   border: 1px solid #334155;
@@ -3180,86 +3180,104 @@ textarea {
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-fade .is-incoming {
-  animation: scene-layer-fade-in 640ms ease-in-out both;
+  animation: scene-layer-fade-in var(--scene-transition-duration) ease-in-out both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-fade .is-outgoing {
-  animation: scene-layer-fade-out 640ms ease-in-out both;
+  animation: scene-layer-fade-out var(--scene-transition-duration) ease-in-out both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-crossfade .is-incoming {
-  animation: scene-layer-crossfade-in 720ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: scene-layer-crossfade-in var(--scene-transition-duration) cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-crossfade .is-outgoing {
-  animation: scene-layer-crossfade-out 720ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: scene-layer-crossfade-out var(--scene-transition-duration) cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-zoomIn .is-incoming {
-  animation: scene-layer-zoom-in 640ms cubic-bezier(0.2, 0.72, 0.22, 1) both;
+  animation: scene-layer-zoom-in var(--scene-transition-duration) cubic-bezier(0.2, 0.72, 0.22, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-zoomIn .is-outgoing {
-  animation: scene-layer-zoom-in-out 640ms cubic-bezier(0.2, 0.72, 0.22, 1) both;
+  animation: scene-layer-zoom-in-out var(--scene-transition-duration) cubic-bezier(0.2, 0.72, 0.22, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-zoomOut .is-incoming {
-  animation: scene-layer-zoom-out 640ms cubic-bezier(0.2, 0.72, 0.22, 1) both;
+  animation: scene-layer-zoom-out var(--scene-transition-duration) cubic-bezier(0.2, 0.72, 0.22, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-zoomOut .is-outgoing {
-  animation: scene-layer-zoom-out-out 640ms cubic-bezier(0.2, 0.72, 0.22, 1) both;
+  animation: scene-layer-zoom-out-out var(--scene-transition-duration) cubic-bezier(0.2, 0.72, 0.22, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-pushLeft .is-incoming {
-  animation: scene-layer-push-left-in 640ms cubic-bezier(0.22, 0.72, 0.2, 1) both;
+  animation: scene-layer-push-left-in var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-pushLeft .is-outgoing {
-  animation: scene-layer-push-left-out 640ms cubic-bezier(0.22, 0.72, 0.2, 1) both;
+  animation: scene-layer-push-left-out var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-pushRight .is-incoming {
-  animation: scene-layer-push-right-in 640ms cubic-bezier(0.22, 0.72, 0.2, 1) both;
+  animation: scene-layer-push-right-in var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-pushRight .is-outgoing {
-  animation: scene-layer-push-right-out 640ms cubic-bezier(0.22, 0.72, 0.2, 1) both;
+  animation: scene-layer-push-right-out var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-pushUp .is-incoming {
-  animation: scene-layer-push-up-in 640ms cubic-bezier(0.22, 0.72, 0.2, 1) both;
+  animation: scene-layer-push-up-in var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-pushUp .is-outgoing {
-  animation: scene-layer-push-up-out 640ms cubic-bezier(0.22, 0.72, 0.2, 1) both;
+  animation: scene-layer-push-up-out var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-pushDown .is-incoming {
-  animation: scene-layer-push-down-in 640ms cubic-bezier(0.22, 0.72, 0.2, 1) both;
+  animation: scene-layer-push-down-in var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-pushDown .is-outgoing {
-  animation: scene-layer-push-down-out 640ms cubic-bezier(0.22, 0.72, 0.2, 1) both;
+  animation: scene-layer-push-down-out var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
 }
 
 .scene-transition-stage-pageTurn {
   perspective: 1800px;
-  overflow-x: visible;
+}
+
+.scene-transition-stage.is-transitioning.scene-transition-stage-pageTurn {
+  overflow: hidden;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-pageTurn .is-incoming {
   z-index: 1;
-  animation: scene-layer-page-reveal 980ms cubic-bezier(0.2, 0.68, 0.18, 1) both;
+  animation: scene-layer-page-reveal var(--scene-transition-duration)
+    cubic-bezier(0.18, 0.72, 0.16, 1) both;
 }
 
 .scene-transition-stage.is-transitioning.scene-transition-stage-pageTurn .is-outgoing {
   z-index: 4;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: auto;
   overflow: hidden;
-  transform-origin: left center;
-  backface-visibility: hidden;
   transform-style: preserve-3d;
-  animation: scene-layer-page-turn 980ms cubic-bezier(0.2, 0.68, 0.18, 1) both;
+}
+
+.scene-transition-stage.is-preview.scene-transition-stage-pageTurn .is-outgoing {
+  border-radius: 24px;
+}
+
+.scene-transition-stage.is-transitioning.scene-transition-stage-pageTurn
+  .is-outgoing
+  > .play-card-exact {
+  animation: scene-page-corner-peel var(--scene-transition-duration)
+    cubic-bezier(0.18, 0.72, 0.16, 1) both;
+  backface-visibility: hidden;
+  transform-origin: left top;
+  will-change: clip-path, filter, transform;
 }
 
 .scene-transition-stage-pageTurn .is-outgoing::before,
@@ -3271,23 +3289,41 @@ textarea {
 }
 
 .scene-transition-stage-pageTurn .is-outgoing::before {
-  right: -4%;
-  bottom: -5%;
-  width: 48%;
+  z-index: 22;
+  right: -3%;
+  bottom: -3%;
+  width: 58%;
   aspect-ratio: 1;
-  border-radius: 100% 0 0;
+  border-radius: 100% 0 0 8%;
   background:
-    radial-gradient(circle at 100% 100%, rgba(255, 255, 255, 0.92) 0 9%, rgba(230, 226, 218, 0.75) 18%, rgba(70, 61, 51, 0.26) 42%, transparent 64%);
-  mix-blend-mode: screen;
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0 46%, rgba(255, 253, 244, 0.96) 48% 58%, rgba(218, 210, 193, 0.98) 72%, rgba(117, 104, 86, 0.9) 100%),
+    radial-gradient(circle at 12% 14%, #fffef8 0 18%, #ded6c7 58%, #887862 100%);
+  box-shadow:
+    -22px -20px 34px rgba(24, 20, 16, 0.28),
+    inset 18px 16px 28px rgba(255, 255, 255, 0.55),
+    inset -16px -18px 24px rgba(64, 52, 39, 0.22);
   transform-origin: right bottom;
-  animation: scene-page-curl-highlight 980ms cubic-bezier(0.2, 0.68, 0.18, 1) both;
+  animation: scene-page-corner-sheet var(--scene-transition-duration)
+    cubic-bezier(0.18, 0.72, 0.16, 1) both;
 }
 
 .scene-transition-stage-pageTurn .is-outgoing::after {
-  inset: 0 0 0 auto;
-  width: 24%;
-  background: linear-gradient(90deg, transparent, rgba(20, 17, 14, 0.42));
-  animation: scene-page-edge-shadow 980ms ease-in-out both;
+  z-index: 21;
+  right: -8%;
+  bottom: -6%;
+  width: 64%;
+  aspect-ratio: 1;
+  border-radius: 100% 0 0;
+  background: radial-gradient(
+    ellipse at 100% 100%,
+    rgba(16, 13, 10, 0.52) 0 8%,
+    rgba(16, 13, 10, 0.3) 24%,
+    transparent 66%
+  );
+  filter: blur(8px);
+  transform-origin: right bottom;
+  animation: scene-page-corner-shadow var(--scene-transition-duration)
+    cubic-bezier(0.18, 0.72, 0.16, 1) both;
 }
 
 @keyframes scene-layer-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -3307,30 +3343,63 @@ textarea {
 @keyframes scene-layer-push-down-in { from { transform: translateY(-100%); } to { transform: translateY(0); } }
 @keyframes scene-layer-push-down-out { from { transform: translateY(0); } to { transform: translateY(30%); } }
 
-@keyframes scene-layer-page-turn {
-  0% { transform: rotateY(0deg) translateZ(0); filter: brightness(1); }
-  38% { filter: brightness(0.92); }
-  72% { filter: brightness(0.74); }
-  100% { transform: rotateY(-178deg) translateZ(2px); filter: brightness(0.58); }
+@keyframes scene-page-corner-peel {
+  0% {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    filter: brightness(1);
+    transform: translateZ(0);
+  }
+  18% {
+    clip-path: polygon(0 0, 100% 0, 100% 82%, 86% 100%, 0 100%);
+    filter: brightness(0.98);
+  }
+  46% {
+    clip-path: polygon(0 0, 100% 0, 100% 42%, 57% 100%, 0 100%);
+    filter: brightness(0.93);
+  }
+  72% {
+    clip-path: polygon(0 0, 73% 0, 18% 100%, 0 100%);
+    filter: brightness(0.86);
+  }
+  100% {
+    clip-path: polygon(0 0, 0 0, 0 100%, 0 100%);
+    filter: brightness(0.78);
+    transform: translateZ(1px);
+  }
 }
 
 @keyframes scene-layer-page-reveal {
-  0% { transform: scale(0.985); filter: brightness(0.82); }
-  58% { filter: brightness(0.94); }
+  0% { transform: scale(0.99); filter: brightness(0.76); }
+  48% { filter: brightness(0.9); }
   100% { transform: scale(1); filter: brightness(1); }
 }
 
-@keyframes scene-page-curl-highlight {
-  0% { opacity: 0; transform: scale(0.12) rotate(0deg); }
-  28% { opacity: 0.78; }
-  68% { opacity: 0.9; transform: scale(1.05) rotate(-12deg); }
-  100% { opacity: 0; transform: scale(1.45) rotate(-24deg); }
+@keyframes scene-page-corner-sheet {
+  0% {
+    opacity: 0;
+    transform: translate(48%, 48%) scale(0.06) rotate(0deg) skew(-3deg, -3deg);
+  }
+  14% { opacity: 1; }
+  48% {
+    opacity: 1;
+    transform: translate(-2%, -2%) scale(0.78) rotate(-3deg) skew(-6deg, -6deg);
+  }
+  78% {
+    opacity: 0.88;
+    transform: translate(-62%, -56%) scale(0.92) rotate(-9deg) skew(-9deg, -9deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-164%, -142%) scale(0.98) rotate(-16deg) skew(-11deg, -11deg);
+  }
 }
 
-@keyframes scene-page-edge-shadow {
-  0% { opacity: 0; transform: scaleX(0.1); }
-  42% { opacity: 0.62; transform: scaleX(1); }
-  100% { opacity: 0; transform: scaleX(0.2); }
+@keyframes scene-page-corner-shadow {
+  0% { opacity: 0; transform: translate(45%, 45%) scale(0.08); }
+  18% { opacity: 0.72; }
+  55% { opacity: 0.58; transform: translate(-4%, -3%) scale(0.82); }
+  88% { opacity: 0.22; }
+  100% { opacity: 0; transform: translate(-148%, -130%) scale(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3479,7 +3548,7 @@ select {
 
 .project-settings-phone-screen {
   display: grid;
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto auto auto auto;
   align-content: center;
   gap: 14px;
   min-height: 430px;
@@ -3488,6 +3557,17 @@ select {
   border-radius: 22px;
   box-shadow: 0 24px 60px rgba(49, 43, 35, 0.25);
   padding: 16px;
+}
+
+.project-settings-title-preview {
+  border: 1px solid rgba(164, 141, 105, 0.34);
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+
+.project-settings-title-preview h1 {
+  margin: 0;
+  font-size: 17px;
 }
 
 .project-settings-image-placeholder {
@@ -3531,6 +3611,90 @@ select {
   border-radius: 8px;
   padding: 7px 10px;
   font-size: 12px;
+}
+
+.project-transition-speed {
+  gap: 7px;
+}
+
+.project-transition-speed > span,
+.settings-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.project-transition-speed small {
+  color: #756c61;
+}
+
+.scene-transition-speed-override {
+  gap: 7px;
+}
+
+.scene-transition-speed-override > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.scene-transition-speed-override strong {
+  color: #2f6f62;
+  font-size: 12px;
+}
+
+.settings-section-heading h3 {
+  margin: 0;
+}
+
+.project-ornate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.project-ornate-grid > button {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 6px;
+  text-align: left;
+}
+
+.project-ornate-grid > button.active {
+  border-color: #2f6f62;
+  background: #e2f0eb;
+  box-shadow: inset 0 0 0 1px #2f6f62;
+}
+
+.project-ornate-grid > button > span:last-child {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-ornate-swatch {
+  display: block;
+  width: 36px;
+  height: 24px;
+  border: 2px solid;
+  border-radius: 5px;
+}
+
+@media (max-width: 680px) {
+  .project-settings-modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+
+  .project-settings-content {
+    grid-template-columns: 1fr;
+  }
 }
 
 .manager-item,
@@ -5300,13 +5464,13 @@ select:focus {
 
 .react-flow__node.dragging {
   z-index: 1000 !important;
-  opacity: 1 !important;
+  opacity: 0 !important;
   visibility: visible !important;
-  filter: drop-shadow(0 18px 24px rgba(48, 37, 25, 0.34));
+  filter: none !important;
 }
 
 .react-flow__node.dragging .story-node {
-  opacity: 1 !important;
+  opacity: 0 !important;
   visibility: visible !important;
 }
 

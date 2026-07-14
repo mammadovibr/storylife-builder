@@ -28,7 +28,6 @@ import {
   SCENE_LAYOUT_OPTIONS,
   SCENE_TRANSITION_OPTIONS,
   SceneLayoutType,
-  SceneOrnamentStyle,
   SceneTransitionOverride,
   SceneType,
   SceneId,
@@ -44,6 +43,7 @@ import {
 import { savePicture } from "../utils/savePicture";
 import { applyColorOpacity } from "../utils/colorOpacity";
 import { AnimatedSceneImage } from "./AnimatedSceneImage";
+import { ORNATE_COLOR_SCHEME_PRESETS } from "../utils/sceneColorSchemes";
 
 interface InspectorProps {
   selectedScene: Scene | null;
@@ -1005,59 +1005,6 @@ const GRADIENT_COLOR_SCHEME_PRESETS = [
   createGradientScheme("Deep Spectrum", "#101936", "#542b5f", "#1d2c53", "#683970", "#73d5c6")
 ];
 
-function createOrnateScheme(
-  name: string,
-  ornamentStyle: Exclude<SceneOrnamentStyle, "none">,
-  backgroundFrom: string,
-  backgroundTo: string,
-  panelFrom: string,
-  panelTo: string,
-  accent: string,
-  textColor: string
-): { name: string; colors: Partial<SceneStyle> } {
-  return {
-    name,
-    colors: {
-      ornamentStyle,
-      backgroundColor: `linear-gradient(145deg, ${backgroundFrom} 0%, ${backgroundTo} 100%)`,
-      textColor,
-      titlePanelColor: `linear-gradient(135deg, ${panelFrom} 0%, ${panelTo} 100%)`,
-      titleBorderColor: accent,
-      titleTextColor: textColor,
-      titleBorderEnabled: true,
-      titlePanelTransparent: false,
-      titlePanelOpacity: 0.92,
-      textPanelColor: `linear-gradient(135deg, ${panelFrom} 0%, ${panelTo} 100%)`,
-      textBorderColor: accent,
-      textBorderEnabled: true,
-      textPanelTransparent: false,
-      textPanelOpacity: 0.9,
-      choicesPanelColor: `linear-gradient(135deg, ${panelTo} 0%, ${panelFrom} 100%)`,
-      choicesBorderColor: accent,
-      choicesTextColor: textColor,
-      choicesBorderEnabled: true,
-      choicesPanelTransparent: false,
-      choicesPanelOpacity: 0.94,
-      choicesFrameStyle: "none"
-    }
-  };
-}
-
-const ORNATE_COLOR_SCHEME_PRESETS = [
-  createOrnateScheme("Gilded Chronicle", "gilded", "#17130d", "#4a3519", "#211a10", "#60451e", "#e2bc69", "#fff2ca"),
-  createOrnateScheme("Moonlit Gothic", "gothic", "#090d17", "#252d45", "#111827", "#303a56", "#b9c8e4", "#f0f4ff"),
-  createOrnateScheme("Enchanted Forest", "forest", "#08241b", "#3f6146", "#123428", "#49684d", "#d5c67b", "#f5f5d8"),
-  createOrnateScheme("Crimson Court", "crimson", "#24070d", "#741f2f", "#370d16", "#84283a", "#e8b96a", "#fff0da"),
-  createOrnateScheme("Oceanic Myth", "ocean", "#041d2a", "#087e92", "#0b3041", "#116f80", "#75e1df", "#ecffff"),
-  createOrnateScheme("Celestial Archive", "celestial", "#0a102b", "#44376f", "#141c3e", "#514280", "#ebd67a", "#fff9db"),
-  createOrnateScheme("Noir Marquee", "noir", "#08090b", "#34363b", "#14161a", "#3f4146", "#e5d8b8", "#fffaf0"),
-  createOrnateScheme("Sakura Dream", "sakura", "#351427", "#a44d73", "#52203a", "#b35d82", "#ffd0dd", "#fff4f7"),
-  createOrnateScheme("Desert Relic", "desert", "#2d1709", "#9a5c1f", "#43230e", "#93602b", "#58d1c5", "#fff1cd"),
-  createOrnateScheme("Frostbound", "frost", "#071a2c", "#477c9e", "#102d43", "#5686a3", "#d5f4ff", "#f3fdff"),
-  createOrnateScheme("Neon Circuit", "cyber", "#080a1b", "#35115b", "#10142c", "#48206b", "#27e6dc", "#f1fbff"),
-  createOrnateScheme("Fairytale Royal", "fairytale", "#111d4b", "#60358a", "#1c2c64", "#704598", "#f2c866", "#fff5d6")
-];
-
 function SceneVisualControls({
   scene,
   projectTheme,
@@ -1715,6 +1662,41 @@ function SceneVisualControls({
                 </option>
               ))}
             </select>
+          </label>
+          <label className="field-label scene-transition-speed-override">
+            <span>
+              Transition speed
+              <strong>
+                {style.sceneTransitionSpeed > 0
+                  ? `${style.sceneTransitionSpeed.toFixed(1)}x`
+                  : "Project default"}
+              </strong>
+            </span>
+            <select
+              value={style.sceneTransitionSpeed > 0 ? "scene" : "project"}
+              onChange={(event) =>
+                patchStyle({
+                  sceneTransitionSpeed:
+                    event.target.value === "scene" ? 1 : 0
+                })
+              }
+            >
+              <option value="project">Use Project Settings speed</option>
+              <option value="scene">Set speed for this scene</option>
+            </select>
+            {style.sceneTransitionSpeed > 0 && (
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={style.sceneTransitionSpeed}
+                onChange={(event) =>
+                  patchStyle({ sceneTransitionSpeed: Number(event.target.value) })
+                }
+                aria-label="Transition speed for this scene"
+              />
+            )}
           </label>
           <details className="scene-layout-details color-scheme-details">
             <summary>Color schemes</summary>

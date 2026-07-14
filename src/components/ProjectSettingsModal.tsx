@@ -3,22 +3,29 @@ import {
   ProjectAudioSettings,
   ProjectTheme,
   SCENE_TRANSITION_OPTIONS,
-  SceneTransition
+  SceneStyle,
+  SceneTransition,
+  createDefaultSceneStyle
 } from "../domain/project";
+import { ORNATE_COLOR_SCHEME_PRESETS } from "../utils/sceneColorSchemes";
 
 interface ProjectSettingsModalProps {
   audio: ProjectAudioSettings;
   theme: ProjectTheme;
+  sceneStyle?: SceneStyle;
   onUpdateAudio: (patch: Partial<ProjectAudioSettings>) => void;
   onUpdateTheme: (patch: Partial<ProjectTheme>) => void;
+  onApplySceneStyle: (patch: Partial<SceneStyle>) => void;
   onClose: () => void;
 }
 
 export function ProjectSettingsModal({
   audio,
   theme,
+  sceneStyle = createDefaultSceneStyle(),
   onUpdateAudio,
   onUpdateTheme,
+  onApplySceneStyle,
   onClose
 }: ProjectSettingsModalProps) {
   return (
@@ -40,9 +47,13 @@ export function ProjectSettingsModal({
           </button>
         </div>
         <div className="project-settings-content">
-          <ProjectThemePreview theme={theme} />
+          <ProjectThemePreview theme={theme} sceneStyle={sceneStyle} />
           <div className="project-settings-controls">
             <ProjectThemeSettings theme={theme} onUpdateTheme={onUpdateTheme} />
+            <ProjectOrnateStyles
+              sceneStyle={sceneStyle}
+              onApplySceneStyle={onApplySceneStyle}
+            />
             <ProjectAudioSettingsPanel audio={audio} onUpdateAudio={onUpdateAudio} />
           </div>
         </div>
@@ -51,32 +62,131 @@ export function ProjectSettingsModal({
   );
 }
 
-function ProjectThemePreview({ theme }: { theme: ProjectTheme }) {
+function ProjectThemePreview({
+  theme,
+  sceneStyle
+}: {
+  theme: ProjectTheme;
+  sceneStyle: SceneStyle;
+}) {
+  const hasOrnament = sceneStyle.ornamentStyle !== "none";
   return (
     <div className="project-settings-phone">
       <article
-        className="project-settings-phone-screen"
+        className={`project-settings-phone-screen scene-ornament-${sceneStyle.ornamentStyle}`}
         style={{
-          background: theme.backgroundColor,
-          color: theme.textColor
+          background: sceneStyle.backgroundColor || theme.backgroundColor,
+          color: sceneStyle.textColor || theme.textColor
         }}
       >
         <div className="scene-image-frame project-settings-image-frame">
           <div className="project-settings-image-placeholder" />
         </div>
-        <section className="play-content project-settings-copy-preview">
+        <section
+          className={`project-settings-title-preview ${
+            hasOrnament && sceneStyle.titleBorderEnabled ? "scene-ornament-panel" : ""
+          }`}
+          style={{
+            background: sceneStyle.titlePanelColor || "rgba(255, 253, 248, 0.78)",
+            color: sceneStyle.titleTextColor || sceneStyle.textColor || theme.textColor,
+            borderColor: sceneStyle.titleBorderColor || undefined
+          }}
+        >
           <h1>Scene title</h1>
+        </section>
+        <section
+          className={`play-content project-settings-copy-preview ${
+            hasOrnament && sceneStyle.textBorderEnabled ? "scene-ornament-panel" : ""
+          }`}
+          style={{
+            background: sceneStyle.textPanelColor || "rgba(255, 253, 248, 0.78)",
+            color: sceneStyle.textColor || theme.textColor,
+            borderColor: sceneStyle.textBorderColor || undefined
+          }}
+        >
           <p>
-            This preview shows the global project colors before scene-specific
-            styling is applied.
+            This compact preview shows the style that will be applied to every scene.
           </p>
         </section>
         <div className="play-choices project-settings-choice-preview">
-          <button type="button">Choice button</button>
-          <button type="button">Another choice</button>
+          <button
+            type="button"
+            className={
+              hasOrnament && sceneStyle.choicesBorderEnabled
+                ? "scene-ornament-panel"
+                : ""
+            }
+            style={{
+              background: sceneStyle.choicesPanelColor || undefined,
+              color: sceneStyle.choicesTextColor || undefined,
+              borderColor: sceneStyle.choicesBorderColor || undefined
+            }}
+          >
+            Choice button
+          </button>
+          <button
+            type="button"
+            className={
+              hasOrnament && sceneStyle.choicesBorderEnabled
+                ? "scene-ornament-panel"
+                : ""
+            }
+            style={{
+              background: sceneStyle.choicesPanelColor || undefined,
+              color: sceneStyle.choicesTextColor || undefined,
+              borderColor: sceneStyle.choicesBorderColor || undefined
+            }}
+          >
+            Another choice
+          </button>
         </div>
       </article>
     </div>
+  );
+}
+
+function ProjectOrnateStyles({
+  sceneStyle,
+  onApplySceneStyle
+}: {
+  sceneStyle: SceneStyle;
+  onApplySceneStyle: (patch: Partial<SceneStyle>) => void;
+}) {
+  return (
+    <section className="settings-section project-ornate-settings">
+      <div className="settings-section-heading">
+        <h3>Project Ornate Styles</h3>
+        <button
+          type="button"
+          onClick={() => onApplySceneStyle({ ornamentStyle: "none" })}
+        >
+          No ornament
+        </button>
+      </div>
+      <div className="project-ornate-grid">
+        {ORNATE_COLOR_SCHEME_PRESETS.map((preset) => (
+          <button
+            type="button"
+            key={preset.name}
+            className={
+              sceneStyle.ornamentStyle === preset.colors.ornamentStyle ? "active" : ""
+            }
+            aria-pressed={sceneStyle.ornamentStyle === preset.colors.ornamentStyle}
+            onClick={() => onApplySceneStyle(preset.colors)}
+          >
+            <span
+              className="project-ornate-swatch"
+              style={{
+                background: preset.colors.backgroundColor,
+                borderColor: preset.colors.titleBorderColor
+              }}
+              aria-hidden="true"
+            />
+            <span>{preset.name}</span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -126,6 +236,23 @@ function ProjectThemeSettings({
             </option>
           ))}
         </select>
+      </label>
+      <label className="field-label project-transition-speed">
+        <span>
+          Transition speed <strong>{theme.sceneTransitionSpeed.toFixed(1)}x</strong>
+        </span>
+        <input
+          type="range"
+          min="0.5"
+          max="2"
+          step="0.1"
+          value={theme.sceneTransitionSpeed}
+          aria-label={`Transition speed ${theme.sceneTransitionSpeed.toFixed(1)}x`}
+          onChange={(event) =>
+            onUpdateTheme({ sceneTransitionSpeed: Number(event.target.value) })
+          }
+        />
+        <small>0.5x is slower and softer; 2x is faster.</small>
       </label>
     </section>
   );

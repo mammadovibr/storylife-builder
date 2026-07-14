@@ -30,6 +30,7 @@ import {
   Scene,
   SceneId,
   SceneNodeColor,
+  SceneStyle,
   serializeProject,
   StoryFlag,
   StoryParameter,
@@ -512,6 +513,10 @@ export default function App() {
       const selectedScene = currentProject.scenes.find(
         (item) => item.id === selectedSceneId
       );
+      if (selectedScene) {
+        scene.layoutType = selectedScene.layoutType;
+        scene.style = { ...selectedScene.style };
+      }
       scene.position = findAvailableScenePosition(
         currentProject.scenes,
         getPreferredNewScenePosition(currentProject.scenes, selectedScene, scene.position)
@@ -612,6 +617,8 @@ export default function App() {
         currentProject.scenes.flatMap((scene) => scene.choices)
       );
       const newScene = createScene(sceneNumber, `scene_${sceneNumber}`);
+      newScene.layoutType = sourceScene.layoutType;
+      newScene.style = { ...sourceScene.style };
       newScene.position = findAvailableScenePosition(
         currentProject.scenes,
         getPreferredNewScenePosition(currentProject.scenes, undefined, {
@@ -657,6 +664,8 @@ export default function App() {
         currentProject.scenes.flatMap((scene) => scene.choices)
       );
       const newScene = createScene(sceneNumber, `scene_${sceneNumber}`);
+      newScene.layoutType = sourceScene.layoutType;
+      newScene.style = { ...sourceScene.style };
       newScene.position = findAvailableScenePosition(currentProject.scenes, position);
       const newChoice = createChoice(newScene.id, `choice_${choiceNumber}`);
       newSceneId = newScene.id;
@@ -839,6 +848,25 @@ export default function App() {
               }
             }))
     }), false);
+  }
+
+  function applyProjectSceneStyle(patch: Partial<SceneStyle>) {
+    commitProjectChange((currentProject) => ({
+      ...currentProject,
+      theme: {
+        ...currentProject.theme,
+        backgroundColor: patch.backgroundColor || currentProject.theme.backgroundColor,
+        textColor: patch.textColor || currentProject.theme.textColor
+      },
+      scenes: currentProject.scenes.map((scene) => ({
+        ...scene,
+        style: {
+          ...scene.style,
+          ...patch
+        }
+      }))
+    }));
+    setStatus(`Project style applied to all ${projectRef.current.scenes.length} scenes`);
   }
 
   function changeSceneNodeColor(sceneId: SceneId, nodeColor: SceneNodeColor) {
@@ -1348,8 +1376,10 @@ export default function App() {
         <ProjectSettingsModal
           audio={project.audio}
           theme={project.theme}
+          sceneStyle={selectedScene?.style ?? project.scenes[0]?.style}
           onUpdateAudio={updateAudio}
           onUpdateTheme={updateTheme}
+          onApplySceneStyle={applyProjectSceneStyle}
           onClose={() => setProjectSettingsOpen(false)}
         />
       )}
