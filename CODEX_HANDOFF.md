@@ -322,19 +322,25 @@ airplane-mode startup and all 12 cached build files.
 - Scene changes use `TransitionedScenePhone`, which keeps outgoing and incoming
   scenes mounted as overlapping layers until the animation ends. Do not return to
   entry-only animation classes on `ScenePhone`; that produced a blank frame between
-  scenes. Fade, crossfade, zooms, pushes, and Apple-style page curl all have paired
-  incoming/outgoing keyframes. Page curl now starts at the bottom-right corner,
-  peels diagonally with a curved page underside and soft shadow, and is clipped to
-  the exact scene page instead of the whole Play layout. It reveals the already-
-  rendered next scene continuously underneath.
+  scenes. Fade, crossfade, zooms, and pushes retain paired incoming/outgoing CSS
+  layers. Page turn is different: it uses the bundled MIT-licensed
+  `react-pageflip`/StPageFlip engine to bend the live outgoing HTML page from the
+  bottom-right corner, render its reverse copy and physical shadows, and reveal the
+  already-rendered next scene underneath. Do not restore the old hand-built
+  polygon/`clip-path` curl.
 - `ProjectTheme.sceneTransitionSpeed` stores the global 0.5x-2x animation speed.
   `SceneStyle.sceneTransitionSpeed` is `0` for project inheritance or a per-scene
   0.5x-2x override. Both values migrate safely for old projects. Scene Layout has
   an explicit Project/default selector and a slider for each scene.
-- The page curl no longer uses stepped polygon keyframes or a white paper
-  placeholder. A registered numeric CSS property drives one continuous diagonal
-  peel, while `scene-page-curl-back` renders a real second `ScenePhone` for the
-  outgoing scene, mirrored horizontally and shaded as the back of the page.
+- Entering Play Mode no longer unmounts the editor. Play is a fixed overlay above
+  the still-mounted `.app-shell`, with pointer events disabled behind it. This is
+  what preserves the exact React Flow camera on exit. A headless Chrome check used
+  a non-default viewport matrix and confirmed byte-for-byte equality before and
+  after Play: `translate(-5.75px, 43.75px) scale(0.625)`.
+- A slowed page-turn smoke test confirmed StPageFlip created the temporary soft
+  reverse page, kept the next scene below it, and removed the transition host after
+  completion. The old white triangle and separately animated page fragment no
+  longer exist in the source.
 - Changing the transition in Project Settings resets every scene override to
   `sceneTransition: "project"`, so the global setting really applies everywhere.
   Scene Layout `Apply to all scenes` still copies an explicit per-scene transition

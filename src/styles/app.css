@@ -2882,10 +2882,19 @@ textarea {
 }
 
 .play-mode {
+  position: fixed;
+  z-index: 13000;
+  inset: 0;
   display: grid;
   grid-template-rows: 64px 1fr;
   min-height: 100vh;
+  overflow: auto;
   background: #f6f3ec;
+}
+
+.app-shell.is-behind-play-mode {
+  pointer-events: none;
+  user-select: none;
 }
 
 .play-topbar {
@@ -3307,94 +3316,55 @@ textarea {
 }
 
 .scene-transition-stage-pageTurn {
-  perspective: 1800px;
-}
-
-.scene-transition-stage.is-transitioning.scene-transition-stage-pageTurn {
   overflow: hidden;
 }
 
-.scene-transition-stage.is-transitioning.scene-transition-stage-pageTurn .is-incoming {
-  z-index: 1;
-  animation: scene-layer-page-reveal var(--scene-transition-duration)
-    cubic-bezier(0.18, 0.72, 0.16, 1) both;
-}
-
-.scene-transition-stage.is-transitioning.scene-transition-stage-pageTurn .is-outgoing {
-  z-index: 4;
+.scene-pageflip-host {
+  position: absolute;
+  z-index: 8;
   inset: 0 auto auto 0;
-  width: 100%;
-  height: auto;
-  overflow: hidden;
-  transform-style: preserve-3d;
-}
-
-.scene-transition-stage.is-preview.scene-transition-stage-pageTurn .is-outgoing {
-  border-radius: 24px;
-}
-
-.scene-transition-stage.is-transitioning.scene-transition-stage-pageTurn
-  .is-outgoing
-  > .play-card-exact {
-  --page-curl-progress: 0;
-  clip-path: polygon(
-    0 0,
-    clamp(0%, calc((200 - var(--page-curl-progress)) * 1%), 100%) 0,
-    clamp(0%, calc((200 - var(--page-curl-progress)) * 1%), 100%)
-      clamp(0%, calc((100 - var(--page-curl-progress)) * 1%), 100%),
-    clamp(0%, calc((100 - var(--page-curl-progress)) * 1%), 100%)
-      clamp(0%, calc((200 - var(--page-curl-progress)) * 1%), 100%),
-    0 clamp(0%, calc((200 - var(--page-curl-progress)) * 1%), 100%)
-  );
-  animation: scene-page-corner-peel var(--scene-transition-duration)
-    cubic-bezier(0.22, 0.61, 0.36, 1) both;
-  backface-visibility: hidden;
-  transform-origin: left top;
-  will-change: clip-path, filter, transform;
-}
-
-.scene-page-curl-back {
-  position: absolute;
-  z-index: 6;
-  right: -1%;
-  bottom: -1%;
-  width: 58%;
-  aspect-ratio: 1;
-  overflow: hidden;
-  border-radius: 100% 0 0 8%;
-  box-shadow:
-    -18px -16px 30px rgba(18, 15, 12, 0.34),
-    inset 15px 14px 24px rgba(255, 255, 255, 0.12),
-    inset -14px -16px 22px rgba(18, 15, 12, 0.32);
   pointer-events: none;
-  transform-origin: right bottom;
-  animation:
-    scene-page-curl-back-motion var(--scene-transition-duration)
-      cubic-bezier(0.22, 0.61, 0.36, 1) both,
-    scene-page-curl-back-opacity var(--scene-transition-duration) linear both;
-  will-change: transform, opacity;
 }
 
-.scene-page-curl-back > .play-card-exact {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 172.5%;
-  max-width: none;
-  filter: brightness(0.62) saturate(0.72) contrast(0.92);
-  opacity: 0.88;
-  transform: scaleX(-1);
-  transform-origin: center;
+.scene-transition-stage.is-preview .scene-pageflip-host,
+.scene-transition-stage.is-preview .scene-pageflip-book {
+  width: 390px;
+  height: min(760px, calc(100vh - 170px));
 }
 
-.scene-page-curl-back::after {
-  position: absolute;
-  z-index: 3;
-  inset: 0;
-  background:
-    linear-gradient(135deg, rgba(16, 13, 10, 0.1) 0 42%, rgba(255, 255, 255, 0.1) 50%, rgba(16, 13, 10, 0.28) 100%),
-    radial-gradient(circle at 10% 12%, transparent 0 28%, rgba(12, 10, 8, 0.22) 100%);
-  content: "";
+.scene-transition-stage.is-export .scene-pageflip-host,
+.scene-transition-stage.is-export .scene-pageflip-book {
+  width: 100%;
+  height: max(760px, 100dvh);
+}
+
+.scene-pageflip-book,
+.scene-pageflip-book .stf__wrapper,
+.scene-pageflip-book .stf__block,
+.scene-pageflip-page {
+  overflow: hidden;
+}
+
+.scene-transition-stage.is-preview .scene-pageflip-book,
+.scene-transition-stage.is-preview .scene-pageflip-page {
+  border-radius: 34px;
+}
+
+.scene-pageflip-page {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  backface-visibility: hidden;
+}
+
+.scene-pageflip-page > .scene-live-preview-phone {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+}
+
+.scene-pageflip-book .stf__item.--soft {
+  backface-visibility: hidden;
 }
 
 @keyframes scene-layer-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -3414,51 +3384,11 @@ textarea {
 @keyframes scene-layer-push-down-in { from { transform: translateY(-100%); } to { transform: translateY(0); } }
 @keyframes scene-layer-push-down-out { from { transform: translateY(0); } to { transform: translateY(30%); } }
 
-@property --page-curl-progress {
-  syntax: "<number>";
-  inherits: false;
-  initial-value: 0;
-}
-
-@keyframes scene-page-corner-peel {
-  from {
-    --page-curl-progress: 0;
-    filter: brightness(1);
-    transform: translateZ(0);
-  }
-  to {
-    --page-curl-progress: 200;
-    filter: brightness(0.78);
-    transform: translateZ(1px);
-  }
-}
-
-@keyframes scene-layer-page-reveal {
-  0% { transform: scale(0.99); filter: brightness(0.76); }
-  100% { transform: scale(1); filter: brightness(1); }
-}
-
-@keyframes scene-page-curl-back-motion {
-  from {
-    transform: translate(49%, 49%) scale(0.035) rotate(0deg) skew(-2deg, -2deg);
-  }
-  to {
-    transform: translate(-164%, -142%) scale(0.98) rotate(-15deg) skew(-10deg, -10deg);
-  }
-}
-
-@keyframes scene-page-curl-back-opacity {
-  0% { opacity: 0; }
-  6% { opacity: 1; }
-  91% { opacity: 1; }
-  100% { opacity: 0; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .scene-transition-layer,
   .scene-transition-layer::before,
   .scene-transition-layer::after,
-  .scene-page-curl-back {
+  .scene-pageflip-host {
     animation-duration: 1ms !important;
   }
 }

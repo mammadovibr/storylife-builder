@@ -1252,19 +1252,9 @@ export default function App() {
     window.addEventListener("mouseup", handleMouseUp);
   }
 
-  if (playSceneId) {
-    return (
-      <PlayMode
-        project={project}
-        currentSceneId={playSceneId}
-        onChoose={setPlaySceneId}
-        onExit={() => setPlaySceneId(null)}
-      />
-    );
-  }
-
   return (
-    <div className="app-shell">
+    <>
+    <div className={`app-shell ${playSceneId ? "is-behind-play-mode" : ""}`}>
       <input
         ref={fallbackProjectInputRef}
         className="hidden-file-input"
@@ -1490,6 +1480,15 @@ export default function App() {
         />
       )}
     </div>
+    {playSceneId && (
+      <PlayMode
+        project={project}
+        currentSceneId={playSceneId}
+        onChoose={setPlaySceneId}
+        onExit={() => setPlaySceneId(null)}
+      />
+    )}
+    </>
   );
 }
 

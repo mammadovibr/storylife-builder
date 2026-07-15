@@ -5,6 +5,7 @@ import {
   useState,
   type CSSProperties
 } from "react";
+import HTMLFlipBook from "react-pageflip";
 import { getActiveSceneImageVariant, type Choice, type RuntimeState, type Scene, type StoryProject } from "../domain/project";
 import { getChoiceButtonFrameStyle } from "../utils/choiceButtonFrames";
 import { applyColorOpacity } from "../utils/colorOpacity";
@@ -47,7 +48,7 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
     transitionTimerRef.current = window.setTimeout(() => {
       setOutgoing(null);
       transitionTimerRef.current = null;
-    }, transitionDuration + 50);
+    }, transitionDuration + (sceneTransition === "pageTurn" ? 180 : 50));
   }, [scene, sceneTransition, transitionDuration, visibleChoices]);
 
   useEffect(
@@ -68,32 +69,32 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
         "--scene-transition-duration": `${transitionDuration}ms`
       } as CSSProperties}
     >
-      {outgoing && (
-        <div
-          className="scene-transition-layer is-outgoing"
-          key={`outgoing-${outgoing.scene.id}-${transitionRevision}`}
-          aria-hidden="true"
-        >
-          <ScenePhone
+      {outgoing &&
+        (sceneTransition === "pageTurn" ? (
+          <PageFlipSceneTransition
+            key={`page-turn-${outgoing.scene.id}-${scene.id}-${transitionRevision}`}
             project={project}
-            scene={outgoing.scene}
-            visibleChoices={outgoing.visibleChoices}
+            outgoing={outgoing}
+            incoming={{ scene, visibleChoices }}
             onChoice={onChoice}
             displayMode={displayMode}
+            duration={transitionDuration}
           />
-          {sceneTransition === "pageTurn" && (
-            <div className="scene-page-curl-back" aria-hidden="true">
-              <ScenePhone
-                project={project}
-                scene={outgoing.scene}
-                visibleChoices={outgoing.visibleChoices}
-                onChoice={onChoice}
-                displayMode={displayMode}
-              />
-            </div>
-          )}
-        </div>
-      )}
+        ) : (
+          <div
+            className="scene-transition-layer is-outgoing"
+            key={`outgoing-${outgoing.scene.id}-${transitionRevision}`}
+            aria-hidden="true"
+          >
+            <ScenePhone
+              project={project}
+              scene={outgoing.scene}
+              visibleChoices={outgoing.visibleChoices}
+              onChoice={onChoice}
+              displayMode={displayMode}
+            />
+          </div>
+        ))}
       <div
         className="scene-transition-layer is-incoming"
         key={`incoming-${scene.id}-${transitionRevision}`}
@@ -108,6 +109,127 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
       </div>
     </div>
   );
+}
+
+interface PageFlipSceneTransitionProps {
+  project: StoryProject;
+  outgoing: ScenePhoneSnapshot;
+  incoming: ScenePhoneSnapshot;
+  onChoice: (choice: Choice) => void;
+  displayMode: "preview" | "export";
+  duration: number;
+}
+
+interface PageFlipHandle {
+  pageFlip: () =>
+    | {
+        flipNext: (corner?: "top" | "bottom") => void;
+      }
+    | undefined;
+}
+
+function PageFlipSceneTransition({
+  project,
+  outgoing,
+  incoming,
+  onChoice,
+  displayMode,
+  duration
+}: PageFlipSceneTransitionProps) {
+  const bookRef = useRef<PageFlipHandle | null>(null);
+  const [pageSize, setPageSize] = useState(() => getPageFlipSize(displayMode));
+
+  useLayoutEffect(() => {
+    const updateSize = () => {
+      const nextSize = getPageFlipSize(displayMode);
+      setPageSize((currentSize) =>
+        currentSize.width === nextSize.width && currentSize.height === nextSize.height
+          ? currentSize
+          : nextSize
+      );
+    };
+
+    updateSize();
+    window.addEventListener("resize", updateSize);
+    return () => window.removeEventListener("resize", updateSize);
+  }, [displayMode]);
+
+  return (
+    <div className="scene-pageflip-host" aria-hidden="true">
+      <HTMLFlipBook
+        key={`${pageSize.width}x${pageSize.height}`}
+        ref={bookRef}
+        className="scene-pageflip-book"
+        style={{}}
+        startPage={0}
+        size="fixed"
+        width={pageSize.width}
+        height={pageSize.height}
+        minWidth={pageSize.width}
+        maxWidth={pageSize.width}
+        minHeight={pageSize.height}
+        maxHeight={pageSize.height}
+        drawShadow
+        flippingTime={duration}
+        usePortrait
+        startZIndex={10}
+        autoSize={false}
+        maxShadowOpacity={0.48}
+        showCover={false}
+        mobileScrollSupport
+        clickEventForward={false}
+        useMouseEvents={false}
+        swipeDistance={30}
+        showPageCorners={false}
+        disableFlipByClick
+        renderOnlyPageLengthChange
+        onInit={() => {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              bookRef.current?.pageFlip()?.flipNext("bottom");
+            });
+          });
+        }}
+      >
+        <div className="scene-pageflip-page" data-density="soft">
+          <ScenePhone
+            project={project}
+            scene={outgoing.scene}
+            visibleChoices={outgoing.visibleChoices}
+            onChoice={onChoice}
+            displayMode={displayMode}
+          />
+        </div>
+        <div className="scene-pageflip-page" data-density="soft">
+          <ScenePhone
+            project={project}
+            scene={incoming.scene}
+            visibleChoices={incoming.visibleChoices}
+            onChoice={onChoice}
+            displayMode={displayMode}
+          />
+        </div>
+      </HTMLFlipBook>
+    </div>
+  );
+}
+
+function getPageFlipSize(displayMode: "preview" | "export") {
+  if (typeof window === "undefined") {
+    return { width: 390, height: 760 };
+  }
+
+  if (displayMode === "export") {
+    return {
+      width: Math.max(1, document.documentElement.clientWidth || window.innerWidth),
+      height: Math.max(760, window.innerHeight)
+    };
+  }
+
+  return {
+    width: 390,
+    height: Math.max(1, Math.min(760, window.innerHeight - 170))
+  };
 }
 
 interface ScenePhoneProps {
