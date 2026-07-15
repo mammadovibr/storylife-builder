@@ -42,6 +42,8 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
     sceneTransition,
     resolveSceneTransitionSpeed(project, scene)
   );
+  const shouldPlayIncomingImageAnimation =
+    sceneTransition !== "pageTurn" || !outgoing || isPageFlipReady;
 
   useLayoutEffect(() => {
     const previousSnapshot = latestSnapshotRef.current;
@@ -62,7 +64,7 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
     transitionTimerRef.current = window.setTimeout(() => {
       setOutgoing(null);
       transitionTimerRef.current = null;
-    }, transitionDuration + (sceneTransition === "pageTurn" ? 180 : 50));
+    }, transitionDuration + (sceneTransition === "pageTurn" ? 900 : 50));
   }, [scene, sceneTransition, transitionDuration, visibleChoices]);
 
   useEffect(
@@ -104,11 +106,17 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
             key={`page-turn-${outgoing.scene.id}-${incoming.scene.id}-${transitionRevision}`}
             project={project}
             outgoing={outgoing}
-            incoming={incoming}
             onChoice={onChoice}
             displayMode={displayMode}
             duration={transitionDuration}
             onReady={() => setPageFlipReady(true)}
+            onComplete={() => {
+              if (transitionTimerRef.current !== null) {
+                window.clearTimeout(transitionTimerRef.current);
+                transitionTimerRef.current = null;
+              }
+              setOutgoing(null);
+            }}
           />
         ) : (
           <div
@@ -128,23 +136,26 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
             />
           </div>
         ))}
-      {(!outgoing || sceneTransition !== "pageTurn") && (
-        <div
-          {...animXyzAttributes}
-          className={`scene-transition-layer is-incoming ${
-            outgoing && animXyzPreset ? "xyz-in" : ""
-          }`}
-          key={`scene-layer-${incoming.scene.id}`}
-        >
-          <ScenePhone
-            project={project}
-            scene={incoming.scene}
-            visibleChoices={incoming.visibleChoices}
-            onChoice={onChoice}
-            displayMode={displayMode}
-          />
-        </div>
-      )}
+      <div
+        {...animXyzAttributes}
+        className={`scene-transition-layer is-incoming ${
+          outgoing && animXyzPreset ? "xyz-in" : ""
+        } ${
+          outgoing && sceneTransition === "pageTurn"
+            ? "scene-pageflip-incoming-layer"
+            : ""
+        }`}
+        key={`scene-layer-${incoming.scene.id}`}
+      >
+        <ScenePhone
+          project={project}
+          scene={incoming.scene}
+          visibleChoices={incoming.visibleChoices}
+          onChoice={onChoice}
+          displayMode={displayMode}
+          imageAnimationPlaying={shouldPlayIncomingImageAnimation}
+        />
+      </div>
     </div>
   );
 }
@@ -152,11 +163,11 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
 interface PageFlipSceneTransitionProps {
   project: StoryProject;
   outgoing: ScenePhoneSnapshot;
-  incoming: ScenePhoneSnapshot;
   onChoice: (choice: Choice) => void;
   displayMode: "preview" | "export";
   duration: number;
   onReady: () => void;
+  onComplete: () => void;
 }
 
 interface PageFlipHandle {
@@ -170,14 +181,15 @@ interface PageFlipHandle {
 function PageFlipSceneTransition({
   project,
   outgoing,
-  incoming,
   onChoice,
   displayMode,
   duration,
-  onReady
+  onReady,
+  onComplete
 }: PageFlipSceneTransitionProps) {
   const bookRef = useRef<PageFlipHandle | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const hasStartedFlipRef = useRef(false);
   const [pageSize, setPageSize] = useState(() => getPageFlipSize(displayMode));
 
   useLayoutEffect(() => {
@@ -224,11 +236,18 @@ function PageFlipSceneTransition({
         showPageCorners={false}
         disableFlipByClick
         renderOnlyPageLengthChange
+        onChangeState={(event) => {
+          if (hasStartedFlipRef.current && event?.data === "read") {
+            hasStartedFlipRef.current = false;
+            onComplete();
+          }
+        }}
         onInit={() => {
           void waitForPageFlipMedia(hostRef.current).then(() => {
             window.requestAnimationFrame(() => {
               onReady();
               window.requestAnimationFrame(() => {
+                hasStartedFlipRef.current = true;
                 bookRef.current?.pageFlip()?.flipNext("bottom");
               });
             });
@@ -244,15 +263,10 @@ function PageFlipSceneTransition({
             displayMode={displayMode}
           />
         </div>
-        <div className="scene-pageflip-page" data-density="soft">
-          <ScenePhone
-            project={project}
-            scene={incoming.scene}
-            visibleChoices={incoming.visibleChoices}
-            onChoice={onChoice}
-            displayMode={displayMode}
-          />
-        </div>
+        <div
+          className="scene-pageflip-page scene-pageflip-transparent-page"
+          data-density="soft"
+        />
       </HTMLFlipBook>
     </div>
   );
@@ -311,6 +325,7 @@ interface ScenePhoneProps {
   visibleChoices: VisibleChoice[];
   onChoice: (choice: Choice) => void;
   displayMode?: "preview" | "export";
+  imageAnimationPlaying?: boolean;
 }
 
 export function ScenePhone({
@@ -318,7 +333,8 @@ export function ScenePhone({
   scene,
   visibleChoices,
   onChoice,
-  displayMode = "preview"
+  displayMode = "preview",
+  imageAnimationPlaying = true
 }: ScenePhoneProps) {
   const imageSrc = useResolvedMediaSrc(scene.imagePath);
   const effectiveLayout =
@@ -335,7 +351,11 @@ export function ScenePhone({
       key={scene.id}
       style={getExactPhoneStyle(scene, effectiveLayout, project, imageSrc)}
     >
-      <ExactSceneVisual scene={scene} mediaSrc={imageSrc} />
+      <ExactSceneVisual
+        scene={scene}
+        mediaSrc={imageSrc}
+        imageAnimationPlaying={imageAnimationPlaying}
+      />
       <ExactSceneTitle scene={scene} project={project} />
       <ExactSceneText scene={scene} project={project} />
       <div
@@ -427,7 +447,15 @@ function getAnimXyzPreset(
   }
 }
 
-function ExactSceneVisual({ scene, mediaSrc }: { scene: Scene; mediaSrc: string }) {
+function ExactSceneVisual({
+  scene,
+  mediaSrc,
+  imageAnimationPlaying
+}: {
+  scene: Scene;
+  mediaSrc: string;
+  imageAnimationPlaying: boolean;
+}) {
   if (scene.imagePath.trim() === "" || mediaSrc.trim() === "" || scene.layoutType === "noImage") {
     return null;
   }
@@ -452,6 +480,7 @@ function ExactSceneVisual({ scene, mediaSrc }: { scene: Scene; mediaSrc: string 
         <AnimatedSceneImage
           imagePath={scene.imagePath}
           animation={getActiveSceneImageVariant(scene)?.animation ?? null}
+          playing={imageAnimationPlaying}
           className="scene-preview-image"
           style={getExactImageStyle(scene)}
           alt=""

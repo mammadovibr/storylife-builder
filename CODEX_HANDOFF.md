@@ -350,6 +350,13 @@ airplane-mode startup and all 12 cached build files.
   preparation frames, removes the underlay, and only then starts bending the page.
   Do not replace this with an immediate remount; that caused a one-frame blink on
   some large scene images.
+- The incoming scene is one persistent layer underneath PageFlip's transparent
+  bottom page. Its image animation is held on its exact first keyframe during book
+  preparation, starts when the corner begins moving, and keeps the same DOM and
+  animation instance after the book reports `changeState: read`. This lets zoom/pan
+  animation remain visible beneath the turning page without restarting or jumping
+  when the page lands. A browser QA run measured a continuous zoom scale sequence:
+  `1.00066, 1.00332, 1.00814, 1.0151, 1.02366, 1.03362, 1.04308` across the handoff.
 - A slowed page-turn smoke test confirmed StPageFlip created the temporary soft
   reverse page, kept the next scene below it, and removed the transition host after
   completion. The old white triangle and separately animated page fragment no

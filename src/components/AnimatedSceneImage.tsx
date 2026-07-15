@@ -68,7 +68,7 @@ export function AnimatedSceneImage({
 
   useEffect(() => {
     const layer = layerRef.current;
-    if (!layer || !playing || activeAnimation?.type !== "procedural") return;
+    if (!layer || activeAnimation?.type !== "procedural") return;
     const playback = layer.animate(
       getProceduralAnimationFrames(
         activeAnimation.preset,
@@ -77,6 +77,10 @@ export function AnimatedSceneImage({
       ),
       getProceduralAnimationOptions(activeAnimation)
     );
+    if (!playing) {
+      playback.pause();
+      playback.currentTime = 0;
+    }
     return () => playback.cancel();
   }, [activeAnimation, playing]);
 
