@@ -229,6 +229,36 @@ describe("project domain", () => {
     expect(migratedProject.scenes[0].style.ornamentStyle).toBe("celestial");
   });
 
+  it("keeps the polished transition presets and retires legacy push transitions", () => {
+    const transitions = [
+      "flipHorizontal",
+      "flipVertical",
+      "softSpiral",
+      "gentleSwing",
+      "depthDissolve",
+      "dreamTilt"
+    ] as const;
+
+    for (const transition of transitions) {
+      const project = createDefaultProject();
+      project.theme.sceneTransition = transition;
+      project.scenes[0].style.sceneTransition = transition;
+      const migratedProject = migrateProject(JSON.parse(JSON.stringify(project)));
+
+      expect(migratedProject.theme.sceneTransition).toBe(transition);
+      expect(migratedProject.scenes[0].style.sceneTransition).toBe(transition);
+    }
+
+    const legacyProject = createDefaultProject();
+    const rawLegacyProject = JSON.parse(JSON.stringify(legacyProject));
+    rawLegacyProject.theme.sceneTransition = "pushLeft";
+    rawLegacyProject.scenes[0].style.sceneTransition = "pushDown";
+    const migratedLegacyProject = migrateProject(rawLegacyProject);
+
+    expect(migratedLegacyProject.theme.sceneTransition).toBe("fade");
+    expect(migratedLegacyProject.scenes[0].style.sceneTransition).toBe("fade");
+  });
+
   it("keeps scene border visibility and choice frame settings", () => {
     const project = createDefaultProject();
     project.scenes[0].style = {

@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@animxyz/core": "^0.6.6",
     "electron-is-dev": "^3.0.1",
     "jszip": "^3.10.1",
     "react": "^18.3.1",

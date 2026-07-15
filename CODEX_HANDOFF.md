@@ -297,9 +297,9 @@ airplane-mode startup and all 12 cached build files.
   button opens the large multi-scene modal directly. It supports Previous/Next
   and a numbered scene range slider.
 - Project Settings owns the default scene transition. Scene Layout can inherit
-  that default or override it per scene. Supported transitions are fade, zoom in,
-  zoom out, four directional pushes, and a smooth book-page turn. Legacy projects
-  migrate to project-level fade and per-scene inheritance.
+  that default or override it per scene. Directional PUSH transitions were removed.
+  Supported transitions are fade, crossfade, zoom in/out, six polished AnimXYZ
+  presets, and a physical book-page turn. Old saved PUSH values migrate to fade.
 - Exported games add bottom scroll room after the scene using the device safe-area
   inset plus a fixed interaction margin. This does not change Scene Layout element
   coordinates or push iPhone choices upward; it only allows a covered bottom choice
@@ -322,8 +322,10 @@ airplane-mode startup and all 12 cached build files.
 - Scene changes use `TransitionedScenePhone`, which keeps outgoing and incoming
   scenes mounted as overlapping layers until the animation ends. Do not return to
   entry-only animation classes on `ScenePhone`; that produced a blank frame between
-  scenes. Fade, crossfade, zooms, and pushes retain paired incoming/outgoing CSS
-  layers. Page turn is different: it uses the bundled MIT-licensed
+  scenes. Fade, crossfade, zooms, and the six AnimXYZ presets retain paired
+  incoming/outgoing CSS layers. The ready-made presets are horizontal flip,
+  vertical flip, soft spiral, gentle swing, depth dissolve, and dream tilt.
+  Page turn is different: it uses the bundled MIT-licensed
   `react-pageflip`/StPageFlip engine to bend the live outgoing HTML page from the
   bottom-right corner, render its reverse copy and physical shadows, and reveal the
   already-rendered next scene underneath. Do not restore the old hand-built
@@ -333,10 +335,15 @@ airplane-mode startup and all 12 cached build files.
   0.5x-2x override. Both values migrate safely for old projects. Scene Layout has
   an explicit Project/default selector and a slider for each scene.
 - Entering Play Mode no longer unmounts the editor. Play is a fixed overlay above
-  the still-mounted `.app-shell`, with pointer events disabled behind it. This is
-  what preserves the exact React Flow camera on exit. A headless Chrome check used
+  the still-mounted `.app-shell`, with pointer events and rendering disabled behind
+  it via visibility/content-visibility. PlayMode now owns its active scene id, so a
+  choice does not re-render the full App/editor tree. This preserves the exact React
+  Flow camera and substantially reduces PLAY load. A headless Chrome check used
   a non-default viewport matrix and confirmed byte-for-byte equality before and
   after Play: `translate(-5.75px, 43.75px) scale(0.625)`.
+- `will-change` is active only during a scene transition. AnimXYZ transitions render
+  exactly two scene layers and remove the outgoing one after completion. Page turn
+  no longer renders a third static incoming scene under the two book pages.
 - A slowed page-turn smoke test confirmed StPageFlip created the temporary soft
   reverse page, kept the next scene below it, and removed the transition host after
   completion. The old white triangle and separately animated page fragment no

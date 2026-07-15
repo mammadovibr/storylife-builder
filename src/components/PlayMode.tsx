@@ -14,16 +14,15 @@ import { TransitionedScenePhone, toMediaSrc } from "./ScenePhone";
 interface PlayModeProps {
   project: StoryProject;
   currentSceneId: SceneId;
-  onChoose: (sceneId: SceneId) => void;
   onExit: () => void;
 }
 
 export function PlayMode({
   project,
   currentSceneId,
-  onChoose,
   onExit
 }: PlayModeProps) {
+  const [activeSceneId, setActiveSceneId] = useState(currentSceneId);
   const [runtimeState, setRuntimeState] = useState(() =>
     createRuntimeState(project)
   );
@@ -34,7 +33,7 @@ export function PlayMode({
   const isBackgroundRestartingRef = useRef(false);
 
   const currentScene =
-    project.scenes.find((scene) => scene.id === currentSceneId) ??
+    project.scenes.find((scene) => scene.id === activeSceneId) ??
     project.scenes.find((scene) => scene.id === project.startSceneId);
 
   useEffect(() => {
@@ -248,7 +247,7 @@ export function PlayMode({
   function handleChoice(choice: Choice) {
     const nextState = applyChoiceEffects(project, runtimeState, choice);
     setRuntimeState(nextState);
-    onChoose(resolveChoiceTarget(choice, runtimeState));
+    setActiveSceneId(resolveChoiceTarget(choice, runtimeState));
   }
 }
 

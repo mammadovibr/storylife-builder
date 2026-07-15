@@ -115,10 +115,12 @@ export type SceneTransition =
   | "crossfade"
   | "zoomIn"
   | "zoomOut"
-  | "pushLeft"
-  | "pushRight"
-  | "pushUp"
-  | "pushDown"
+  | "flipHorizontal"
+  | "flipVertical"
+  | "softSpiral"
+  | "gentleSwing"
+  | "depthDissolve"
+  | "dreamTilt"
   | "pageTurn";
 
 export type SceneTransitionOverride = SceneTransition | "project";
@@ -146,11 +148,13 @@ export const SCENE_TRANSITION_OPTIONS: Array<{
   { value: "crossfade", label: "Smooth crossfade" },
   { value: "zoomIn", label: "Smooth zoom in" },
   { value: "zoomOut", label: "Smooth zoom out" },
-  { value: "pushLeft", label: "Push from right" },
-  { value: "pushRight", label: "Push from left" },
-  { value: "pushUp", label: "Push from bottom" },
-  { value: "pushDown", label: "Push from top" },
-  { value: "pageTurn", label: "Apple-style page curl" }
+  { value: "flipHorizontal", label: "Cinematic horizontal flip" },
+  { value: "flipVertical", label: "Gallery vertical flip" },
+  { value: "softSpiral", label: "Soft spiral dissolve" },
+  { value: "gentleSwing", label: "Gentle hanging swing" },
+  { value: "depthDissolve", label: "Depth dissolve" },
+  { value: "dreamTilt", label: "Dream tilt" },
+  { value: "pageTurn", label: "Realistic page turn" }
 ];
 
 export interface Position {
@@ -1742,10 +1746,12 @@ function readSceneTransition(value: unknown): SceneTransition {
   return value === "crossfade" ||
     value === "zoomIn" ||
     value === "zoomOut" ||
-    value === "pushLeft" ||
-    value === "pushRight" ||
-    value === "pushUp" ||
-    value === "pushDown" ||
+    value === "flipHorizontal" ||
+    value === "flipVertical" ||
+    value === "softSpiral" ||
+    value === "gentleSwing" ||
+    value === "depthDissolve" ||
+    value === "dreamTilt" ||
     value === "pageTurn"
     ? value
     : "fade";

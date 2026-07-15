@@ -2895,6 +2895,8 @@ textarea {
 .app-shell.is-behind-play-mode {
   pointer-events: none;
   user-select: none;
+  visibility: hidden;
+  content-visibility: hidden;
 }
 
 .play-topbar {
@@ -3236,7 +3238,10 @@ textarea {
   width: 100%;
   min-width: 0;
   transform-origin: center;
-  will-change: transform, opacity, filter;
+}
+
+.scene-transition-stage.is-transitioning .scene-transition-layer {
+  will-change: transform, opacity;
 }
 
 .scene-transition-layer.is-incoming {
@@ -3283,36 +3288,25 @@ textarea {
   animation: scene-layer-zoom-out-out var(--scene-transition-duration) cubic-bezier(0.2, 0.72, 0.22, 1) both;
 }
 
-.scene-transition-stage.is-transitioning.scene-transition-stage-pushLeft .is-incoming {
-  animation: scene-layer-push-left-in var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
+.scene-transition-layer.xyz-in,
+.scene-transition-layer.xyz-out {
+  --xyz-duration: var(--scene-transition-duration);
+  --xyz-ease: cubic-bezier(0.22, 0.72, 0.2, 1);
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
 }
 
-.scene-transition-stage.is-transitioning.scene-transition-stage-pushLeft .is-outgoing {
-  animation: scene-layer-push-left-out var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
-}
-
-.scene-transition-stage.is-transitioning.scene-transition-stage-pushRight .is-incoming {
-  animation: scene-layer-push-right-in var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
-}
-
-.scene-transition-stage.is-transitioning.scene-transition-stage-pushRight .is-outgoing {
-  animation: scene-layer-push-right-out var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
-}
-
-.scene-transition-stage.is-transitioning.scene-transition-stage-pushUp .is-incoming {
-  animation: scene-layer-push-up-in var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
-}
-
-.scene-transition-stage.is-transitioning.scene-transition-stage-pushUp .is-outgoing {
-  animation: scene-layer-push-up-out var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
-}
-
-.scene-transition-stage.is-transitioning.scene-transition-stage-pushDown .is-incoming {
-  animation: scene-layer-push-down-in var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
-}
-
-.scene-transition-stage.is-transitioning.scene-transition-stage-pushDown .is-outgoing {
-  animation: scene-layer-push-down-out var(--scene-transition-duration) cubic-bezier(0.22, 0.72, 0.2, 1) both;
+.scene-transition-stage:is(
+    .scene-transition-stage-flipHorizontal,
+    .scene-transition-stage-flipVertical,
+    .scene-transition-stage-softSpiral,
+    .scene-transition-stage-gentleSwing,
+    .scene-transition-stage-depthDissolve,
+    .scene-transition-stage-dreamTilt
+  ) {
+  overflow: hidden;
+  perspective: 1600px;
 }
 
 .scene-transition-stage-pageTurn {
@@ -3355,6 +3349,7 @@ textarea {
   height: 100%;
   background: transparent;
   backface-visibility: hidden;
+  contain: layout paint style;
 }
 
 .scene-pageflip-page > .scene-live-preview-phone {
@@ -3375,15 +3370,6 @@ textarea {
 @keyframes scene-layer-zoom-in-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(1.05); } }
 @keyframes scene-layer-zoom-out { from { opacity: 0; transform: scale(1.08); } to { opacity: 1; transform: scale(1); } }
 @keyframes scene-layer-zoom-out-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.94); } }
-@keyframes scene-layer-push-left-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
-@keyframes scene-layer-push-left-out { from { transform: translateX(0); } to { transform: translateX(-32%); } }
-@keyframes scene-layer-push-right-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
-@keyframes scene-layer-push-right-out { from { transform: translateX(0); } to { transform: translateX(32%); } }
-@keyframes scene-layer-push-up-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
-@keyframes scene-layer-push-up-out { from { transform: translateY(0); } to { transform: translateY(-30%); } }
-@keyframes scene-layer-push-down-in { from { transform: translateY(-100%); } to { transform: translateY(0); } }
-@keyframes scene-layer-push-down-out { from { transform: translateY(0); } to { transform: translateY(30%); } }
-
 @media (prefers-reduced-motion: reduce) {
   .scene-transition-layer,
   .scene-transition-layer::before,

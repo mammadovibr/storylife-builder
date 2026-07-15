@@ -1484,7 +1484,6 @@ export default function App() {
       <PlayMode
         project={project}
         currentSceneId={playSceneId}
-        onChoose={setPlaySceneId}
         onExit={() => setPlaySceneId(null)}
       />
     )}

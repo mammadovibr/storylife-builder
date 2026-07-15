@@ -5,6 +5,7 @@ import {
   useState,
   type CSSProperties
 } from "react";
+import "@animxyz/core";
 import HTMLFlipBook from "react-pageflip";
 import { getActiveSceneImageVariant, type Choice, type RuntimeState, type Scene, type StoryProject } from "../domain/project";
 import { getChoiceButtonFrameStyle } from "../utils/choiceButtonFrames";
@@ -28,6 +29,10 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
   const [outgoing, setOutgoing] = useState<ScenePhoneSnapshot | null>(null);
   const [transitionRevision, setTransitionRevision] = useState(0);
   const sceneTransition = resolveSceneTransition(project, scene);
+  const animXyzPreset = getAnimXyzPreset(sceneTransition);
+  const animXyzAttributes = animXyzPreset
+    ? ({ xyz: animXyzPreset } as Record<string, string>)
+    : {};
   const transitionDuration = getSceneTransitionDuration(
     sceneTransition,
     resolveSceneTransitionSpeed(project, scene)
@@ -82,7 +87,10 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
           />
         ) : (
           <div
-            className="scene-transition-layer is-outgoing"
+            {...animXyzAttributes}
+            className={`scene-transition-layer is-outgoing ${
+              animXyzPreset ? "xyz-out" : ""
+            }`}
             key={`outgoing-${outgoing.scene.id}-${transitionRevision}`}
             aria-hidden="true"
           >
@@ -95,18 +103,23 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
             />
           </div>
         ))}
-      <div
-        className="scene-transition-layer is-incoming"
-        key={`incoming-${scene.id}-${transitionRevision}`}
-      >
-        <ScenePhone
-          project={project}
-          scene={scene}
-          visibleChoices={visibleChoices}
-          onChoice={onChoice}
-          displayMode={displayMode}
-        />
-      </div>
+      {(!outgoing || sceneTransition !== "pageTurn") && (
+        <div
+          {...animXyzAttributes}
+          className={`scene-transition-layer is-incoming ${
+            outgoing && animXyzPreset ? "xyz-in" : ""
+          }`}
+          key={`incoming-${scene.id}-${transitionRevision}`}
+        >
+          <ScenePhone
+            project={project}
+            scene={scene}
+            visibleChoices={visibleChoices}
+            onChoice={onChoice}
+            displayMode={displayMode}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -323,8 +336,35 @@ function getSceneTransitionDuration(
 ) {
   const safeSpeed = Math.min(2, Math.max(0.5, speed || 1));
   const baseDuration =
-    transition === "pageTurn" ? 1250 : transition === "crossfade" ? 720 : 640;
+    transition === "pageTurn"
+      ? 1250
+      : getAnimXyzPreset(transition)
+        ? 860
+        : transition === "crossfade"
+          ? 720
+          : 640;
   return Math.round(baseDuration / safeSpeed);
+}
+
+function getAnimXyzPreset(
+  transition: ReturnType<typeof resolveSceneTransition>
+) {
+  switch (transition) {
+    case "flipHorizontal":
+      return "fade flip-left-50% perspective-5 ease-in-out";
+    case "flipVertical":
+      return "fade flip-up-50% perspective-5 ease-in-out";
+    case "softSpiral":
+      return "fade rotate-right-2 small-3 ease-in-out";
+    case "gentleSwing":
+      return "fade rotate-left-2 origin-top perspective-4 ease-in-out";
+    case "depthDissolve":
+      return "fade back-2 small-2 perspective-5 ease-in-out";
+    case "dreamTilt":
+      return "fade skew-left-1 small-2 origin-bottom-right ease-in-out";
+    default:
+      return null;
+  }
 }
 
 function ExactSceneVisual({ scene, mediaSrc }: { scene: Scene; mediaSrc: string }) {
