@@ -401,6 +401,22 @@ airplane-mode startup and all 12 cached build files.
   variant while keeping the original. The locked-canvas backend instruction now
   permits any explicitly requested edit while preserving everything not requested;
   AI-frame animation still uses the same path safely.
+- Canvas Ctrl-drag now has a distinct create preview. The source node is represented
+  by a full-size stationary preview at its original screen position while a green
+  half-size `New connected scene` preview follows the pointer. Releasing still uses
+  the React Flow drop position to create the new scene and connected choice; ordinary
+  dragging keeps the single moving-node preview.
+- Project style templates now include five book presets: worn antique folio,
+  embossed leather ledger, botanical field journal, enchanted story volume, and
+  noir pocket novel. Their backgrounds live under `src/assets/book-backgrounds/`
+  and are referenced from `app.css`, so Vite bundles them into both the editor and
+  exported player without machine-specific paths.
+- Choice button frames now run from `crafted_01` through `crafted_35`; the fifteen
+  additions include parchment, stitched leather, botanical, manuscript, library,
+  fairytale, noir, celestial, deco, sakura, copper, frost, and halftone variants.
+  Selecting any crafted choice frame suppresses the project ornament on choice
+  buttons only, preventing doubled borders while title and scene-text ornaments stay
+  intact. Migration tests cover both a book ornament id and `crafted_35` persistence.
 
 The standalone frontend command below currently reports older type errors in the legacy AI story code and some Inspector helpers:
 

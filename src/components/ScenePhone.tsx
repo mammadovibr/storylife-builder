@@ -378,7 +378,9 @@ export function ScenePhone({
               className={`choice-preview-input exact-play-choice-button ${
                 !isAvailable ? "locked-choice" : ""
               } ${choicesAreTransparent ? "transparent-choice-button" : ""} ${
-                scene.style.choicesBorderEnabled && scene.style.ornamentStyle !== "none"
+                scene.style.choicesBorderEnabled &&
+                scene.style.ornamentStyle !== "none" &&
+                scene.style.choicesFrameStyle === "none"
                   ? "scene-ornament-panel"
                   : ""
               }`}

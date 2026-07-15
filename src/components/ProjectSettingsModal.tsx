@@ -7,7 +7,11 @@ import {
   SceneTransition,
   createDefaultSceneStyle
 } from "../domain/project";
-import { ORNATE_COLOR_SCHEME_PRESETS } from "../utils/sceneColorSchemes";
+import { getChoiceButtonFrameStyle } from "../utils/choiceButtonFrames";
+import {
+  BOOK_COLOR_SCHEME_PRESETS,
+  ORNATE_COLOR_SCHEME_PRESETS
+} from "../utils/sceneColorSchemes";
 
 interface ProjectSettingsModalProps {
   audio: ProjectAudioSettings;
@@ -70,6 +74,7 @@ function ProjectThemePreview({
   sceneStyle: SceneStyle;
 }) {
   const hasOrnament = sceneStyle.ornamentStyle !== "none";
+  const choiceUsesFrame = sceneStyle.choicesFrameStyle !== "none";
   return (
     <div className="project-settings-phone">
       <article
@@ -112,14 +117,18 @@ function ProjectThemePreview({
           <button
             type="button"
             className={
-              hasOrnament && sceneStyle.choicesBorderEnabled
+              hasOrnament && sceneStyle.choicesBorderEnabled && !choiceUsesFrame
                 ? "scene-ornament-panel"
                 : ""
             }
             style={{
               background: sceneStyle.choicesPanelColor || undefined,
               color: sceneStyle.choicesTextColor || undefined,
-              borderColor: sceneStyle.choicesBorderColor || undefined
+              borderColor: sceneStyle.choicesBorderColor || undefined,
+              ...getChoiceButtonFrameStyle(
+                sceneStyle.choicesFrameStyle,
+                sceneStyle.choicesPanelOpacity
+              )
             }}
           >
             Choice button
@@ -127,14 +136,18 @@ function ProjectThemePreview({
           <button
             type="button"
             className={
-              hasOrnament && sceneStyle.choicesBorderEnabled
+              hasOrnament && sceneStyle.choicesBorderEnabled && !choiceUsesFrame
                 ? "scene-ornament-panel"
                 : ""
             }
             style={{
               background: sceneStyle.choicesPanelColor || undefined,
               color: sceneStyle.choicesTextColor || undefined,
-              borderColor: sceneStyle.choicesBorderColor || undefined
+              borderColor: sceneStyle.choicesBorderColor || undefined,
+              ...getChoiceButtonFrameStyle(
+                sceneStyle.choicesFrameStyle,
+                sceneStyle.choicesPanelOpacity
+              )
             }}
           >
             Another choice
@@ -155,7 +168,7 @@ function ProjectOrnateStyles({
   return (
     <section className="settings-section project-ornate-settings">
       <div className="settings-section-heading">
-        <h3>Project Ornate Styles</h3>
+        <h3>Project Style Templates</h3>
         <button
           type="button"
           onClick={() => onApplySceneStyle({ ornamentStyle: "none" })}
@@ -163,6 +176,7 @@ function ProjectOrnateStyles({
           No ornament
         </button>
       </div>
+      <h4 className="project-style-group-title">Ornate</h4>
       <div className="project-ornate-grid">
         {ORNATE_COLOR_SCHEME_PRESETS.map((preset) => (
           <button
@@ -176,6 +190,30 @@ function ProjectOrnateStyles({
           >
             <span
               className="project-ornate-swatch"
+              style={{
+                background: preset.colors.backgroundColor,
+                borderColor: preset.colors.titleBorderColor
+              }}
+              aria-hidden="true"
+            />
+            <span>{preset.name}</span>
+          </button>
+        ))}
+      </div>
+      <h4 className="project-style-group-title">Book Styles</h4>
+      <div className="project-ornate-grid">
+        {BOOK_COLOR_SCHEME_PRESETS.map((preset) => (
+          <button
+            type="button"
+            key={preset.name}
+            className={
+              sceneStyle.ornamentStyle === preset.colors.ornamentStyle ? "active" : ""
+            }
+            aria-pressed={sceneStyle.ornamentStyle === preset.colors.ornamentStyle}
+            onClick={() => onApplySceneStyle(preset.colors)}
+          >
+            <span
+              className={`project-ornate-swatch scene-book-swatch scene-ornament-${preset.colors.ornamentStyle}`}
               style={{
                 background: preset.colors.backgroundColor,
                 borderColor: preset.colors.titleBorderColor

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 760">
+  <defs>
+    <linearGradient id="paper" x1="0" x2="1"><stop stop-color="#252525"/><stop offset=".13" stop-color="#c7c2b7"/><stop offset=".85" stop-color="#eee9dc"/><stop offset="1" stop-color="#8f8a81"/></linearGradient>
+    <pattern id="dots" width="10" height="10" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#111" opacity=".1"/></pattern>
+  </defs>
+  <rect width="390" height="760" fill="url(#paper)"/>
+  <rect width="390" height="760" fill="url(#dots)"/>
+  <rect width="48" height="760" fill="#101010"/>
+  <path d="M48 0 65 760" stroke="#9d1f2c" stroke-width="7" opacity=".85"/>
+  <rect x="69" y="21" width="298" height="718" fill="none" stroke="#242424" stroke-width="3"/>
+  <rect x="77" y="29" width="282" height="702" fill="none" stroke="#9d1f2c" stroke-width="1.5"/>
+  <g fill="#1a1a1a" opacity=".17"><path d="m315 0 75 0v180L344 119Z"/><path d="m70 760 0-132 89 132Z"/></g>
+  <path d="M84 63h71M84 70h43M304 688h45M326 695h23" stroke="#171717" stroke-width="3" opacity=".55"/>
+</svg>

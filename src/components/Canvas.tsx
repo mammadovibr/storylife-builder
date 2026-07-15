@@ -67,6 +67,7 @@ function CanvasContent({
 }: CanvasProps) {
   const reactFlow = useReactFlow();
   const ctrlDragSourceRef = useRef<SceneId | null>(null);
+  const dragOriginClientRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const [colorMenu, setColorMenu] = useState<{
     sceneId: SceneId;
     x: number;
@@ -76,6 +77,9 @@ function CanvasContent({
     sceneId: SceneId;
     clientX: number;
     clientY: number;
+    mode: "move" | "create";
+    originClientX: number;
+    originClientY: number;
   } | null>(null);
 
   useEffect(() => {
@@ -278,18 +282,35 @@ function CanvasContent({
   );
 
   const handleNodeDragStart: NodeDragHandler = (event, node) => {
-    ctrlDragSourceRef.current = "ctrlKey" in event && event.ctrlKey ? node.id : null;
+    const isCreateDrag = "ctrlKey" in event && event.ctrlKey;
+    ctrlDragSourceRef.current = isCreateDrag ? node.id : null;
     const point = readClientPoint(event);
-    setDragPreview({ sceneId: node.id, ...point });
+    const origin = readNodeClientCenter(node.id) ?? point;
+    dragOriginClientRef.current = origin;
+    setDragPreview({
+      sceneId: node.id,
+      ...point,
+      mode: isCreateDrag ? "create" : "move",
+      originClientX: origin.clientX,
+      originClientY: origin.clientY
+    });
   };
 
   const handleNodeDrag: NodeDragHandler = (event, node) => {
     const point = readClientPoint(event);
-    setDragPreview({ sceneId: node.id, ...point });
+    const origin = dragOriginClientRef.current ?? point;
+    setDragPreview({
+      sceneId: node.id,
+      ...point,
+      mode: ctrlDragSourceRef.current === node.id ? "create" : "move",
+      originClientX: origin.clientX,
+      originClientY: origin.clientY
+    });
   };
 
   const handleNodeDragStop: NodeDragHandler = (_event, node) => {
     setDragPreview(null);
+    dragOriginClientRef.current = null;
     if (ctrlDragSourceRef.current === node.id) {
       ctrlDragSourceRef.current = null;
       onCreateConnectedScene(node.id, node.position);
@@ -374,12 +395,24 @@ function CanvasContent({
         />
       </ReactFlow>
       {dragPreview && (
-        <NodeDragPreview
-          scene={scenes.find((scene) => scene.id === dragPreview.sceneId) ?? null}
-          startSceneId={startSceneId}
-          clientX={dragPreview.clientX}
-          clientY={dragPreview.clientY}
-        />
+        <>
+          {dragPreview.mode === "create" && (
+            <NodeDragPreview
+              scene={scenes.find((scene) => scene.id === dragPreview.sceneId) ?? null}
+              startSceneId={startSceneId}
+              clientX={dragPreview.originClientX}
+              clientY={dragPreview.originClientY}
+              variant="source"
+            />
+          )}
+          <NodeDragPreview
+            scene={scenes.find((scene) => scene.id === dragPreview.sceneId) ?? null}
+            startSceneId={startSceneId}
+            clientX={dragPreview.clientX}
+            clientY={dragPreview.clientY}
+            variant={dragPreview.mode === "create" ? "create" : "move"}
+          />
+        </>
       )}
       {colorMenu && (
         <div
@@ -409,18 +442,20 @@ function NodeDragPreview({
   scene,
   startSceneId,
   clientX,
-  clientY
+  clientY,
+  variant
 }: {
   scene: Scene | null;
   startSceneId: SceneId;
   clientX: number;
   clientY: number;
+  variant: "source" | "move" | "create";
 }) {
   if (!scene) return null;
 
   return (
     <div
-      className={`node-drag-preview react-flow__node-default ${getNodeClassName(
+      className={`node-drag-preview node-drag-preview-${variant} react-flow__node-default ${getNodeClassName(
         scene,
         startSceneId
       )}`}
@@ -428,19 +463,30 @@ function NodeDragPreview({
       aria-hidden="true"
     >
       <div className="story-node">
-        {scene.imagePath.trim() !== "" && (
+        {variant !== "create" && scene.imagePath.trim() !== "" && (
           <NodeThumbnail
             mediaPath={scene.imagePath}
             mediaType={scene.visualMediaType}
           />
         )}
-        <strong>{scene.title || "Untitled scene"}</strong>
+        <strong>{variant === "create" ? "New connected scene" : scene.title || "Untitled scene"}</strong>
         <small className="node-layout-badge">
-          {formatLayoutName(scene.layoutType)}
+          {variant === "create" ? "Release to create" : formatLayoutName(scene.layoutType)}
         </small>
       </div>
     </div>
   );
+}
+
+function readNodeClientCenter(sceneId: SceneId): { clientX: number; clientY: number } | null {
+  const nodeElement = [...document.querySelectorAll<HTMLElement>(".react-flow__node[data-id]")]
+    .find((element) => element.dataset.id === sceneId);
+  if (!nodeElement) return null;
+  const bounds = nodeElement.getBoundingClientRect();
+  return {
+    clientX: bounds.left + bounds.width / 2,
+    clientY: bounds.top + bounds.height / 2
+  };
 }
 
 function readClientPoint(event: unknown): { clientX: number; clientY: number } {

@@ -2962,6 +2962,47 @@ textarea {
 .scene-ornament-frost { --scene-ornament-image: url("../assets/theme-ornaments/frost.svg"); }
 .scene-ornament-cyber { --scene-ornament-image: url("../assets/theme-ornaments/cyber.svg"); }
 .scene-ornament-fairytale { --scene-ornament-image: url("../assets/theme-ornaments/fairytale.svg"); }
+.scene-ornament-book-antique {
+  --scene-ornament-image: url("../assets/theme-ornaments/gilded.svg");
+  --scene-book-background: url("../assets/book-backgrounds/antique-folio.svg");
+}
+.scene-ornament-book-leather {
+  --scene-ornament-image: url("../assets/theme-ornaments/crimson.svg");
+  --scene-book-background: url("../assets/book-backgrounds/leather-ledger.svg");
+}
+.scene-ornament-book-botanical {
+  --scene-ornament-image: url("../assets/theme-ornaments/forest.svg");
+  --scene-book-background: url("../assets/book-backgrounds/botanical-journal.svg");
+}
+.scene-ornament-book-enchanted {
+  --scene-ornament-image: url("../assets/theme-ornaments/fairytale.svg");
+  --scene-book-background: url("../assets/book-backgrounds/enchanted-volume.svg");
+}
+.scene-ornament-book-noir {
+  --scene-ornament-image: url("../assets/theme-ornaments/noir.svg");
+  --scene-book-background: url("../assets/book-backgrounds/noir-paperback.svg");
+}
+
+.scene-live-preview-phone:is(
+  .scene-ornament-book-antique,
+  .scene-ornament-book-leather,
+  .scene-ornament-book-botanical,
+  .scene-ornament-book-enchanted,
+  .scene-ornament-book-noir
+),
+.project-settings-phone-screen:is(
+  .scene-ornament-book-antique,
+  .scene-ornament-book-leather,
+  .scene-ornament-book-botanical,
+  .scene-ornament-book-enchanted,
+  .scene-ornament-book-noir
+),
+.scene-book-swatch {
+  background-image: var(--scene-book-background) !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  background-size: 100% 100% !important;
+}
 
 .scene-ornament-panel {
   border: 2px solid transparent !important;
@@ -3633,6 +3674,12 @@ select {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
+}
+
+.project-style-group-title {
+  margin: 10px 0 6px;
+  color: #62584c;
+  font-size: 12px;
 }
 
 .project-ornate-grid > button {
@@ -5560,6 +5607,31 @@ select:focus {
 
 .node-drag-preview .story-node {
   width: 100%;
+}
+
+.node-drag-preview-source {
+  opacity: 1;
+  filter: drop-shadow(0 8px 14px rgba(48, 37, 25, 0.24));
+}
+
+.node-drag-preview-create {
+  z-index: 100001;
+  border-color: #0f713f !important;
+  background: linear-gradient(180deg, #39ba70, #16834b) !important;
+  color: #fff !important;
+  scale: 0.5;
+  opacity: 1;
+  filter: drop-shadow(0 28px 34px rgba(16, 91, 52, 0.48));
+}
+
+.node-drag-preview-create .story-node strong,
+.node-drag-preview-create .node-layout-badge {
+  color: #fff !important;
+}
+
+.node-drag-preview-create .node-layout-badge {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(0, 67, 35, 0.38);
 }
 
 @media (max-width: 1279px) {

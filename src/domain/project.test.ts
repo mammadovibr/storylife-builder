@@ -357,6 +357,17 @@ describe("project domain", () => {
     });
   });
 
+  it("keeps book themes and extended choice frames during migration", () => {
+    const project = createDefaultProject();
+    project.scenes[0].style.ornamentStyle = "book-antique";
+    project.scenes[0].style.choicesFrameStyle = "crafted_35";
+
+    const restored = migrateProject(JSON.parse(JSON.stringify(project)));
+
+    expect(restored.scenes[0].style.ornamentStyle).toBe("book-antique");
+    expect(restored.scenes[0].style.choicesFrameStyle).toBe("crafted_35");
+  });
+
   it("checks parameter and flag conditions", () => {
     const project = createDefaultProject();
     const parameter = createParameter(1);

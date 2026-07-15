@@ -144,7 +144,12 @@ export type SceneOrnamentStyle =
   | "desert"
   | "frost"
   | "cyber"
-  | "fairytale";
+  | "fairytale"
+  | "book-antique"
+  | "book-leather"
+  | "book-botanical"
+  | "book-enchanted"
+  | "book-noir";
 
 export const SCENE_TRANSITION_OPTIONS: Array<{
   value: SceneTransition;
@@ -1826,7 +1831,12 @@ function readSceneOrnamentStyle(value: unknown): SceneOrnamentStyle {
     value === "desert" ||
     value === "frost" ||
     value === "cyber" ||
-    value === "fairytale"
+    value === "fairytale" ||
+    value === "book-antique" ||
+    value === "book-leather" ||
+    value === "book-botanical" ||
+    value === "book-enchanted" ||
+    value === "book-noir"
     ? value
     : "none";
 }
@@ -1873,7 +1883,7 @@ function readTextFontFamily(value: unknown): string {
 
 function readChoiceFrameStyle(value: unknown): string {
   if (typeof value !== "string") return "none";
-  if (/^crafted_(0[1-9]|1[0-9]|20)$/.test(value)) return value;
+  if (/^crafted_(0[1-9]|[12][0-9]|3[0-5])$/.test(value)) return value;
   const legacyMatch = value.match(/^ornate_(0[1-9]|[12][0-9]|30)$/);
   if (!legacyMatch) return "none";
   const legacyNumber = Number(legacyMatch[1]);

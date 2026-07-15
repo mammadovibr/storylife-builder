@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 760">
+  <defs>
+    <radialGradient id="night"><stop stop-color="#344a86"/><stop offset=".62" stop-color="#172653"/><stop offset="1" stop-color="#090f2d"/></radialGradient>
+    <pattern id="stars" width="57" height="61" patternUnits="userSpaceOnUse"><circle cx="9" cy="15" r="1.4" fill="#ffe9a2"/><circle cx="43" cy="39" r=".8" fill="#fff8d6"/><path d="M28 8v8m-4-4h8" stroke="#f2c866" opacity=".55"/></pattern>
+  </defs>
+  <rect width="390" height="760" fill="url(#night)"/>
+  <rect width="390" height="760" fill="url(#stars)" opacity=".7"/>
+  <path d="M42 0c13 130-7 251 5 380 11 125-9 251-5 380" fill="none" stroke="#d8b653" stroke-width="5" opacity=".62"/>
+  <rect x="19" y="18" width="352" height="724" rx="28" fill="none" stroke="#e2c66f" stroke-width="3"/>
+  <rect x="29" y="28" width="332" height="704" rx="21" fill="none" stroke="#8fd4cc" stroke-width="1.4" opacity=".7"/>
+  <g fill="#f4d778"><path d="m35 35 7 13 13 7-13 7-7 13-7-13-13-7 13-7Z"/><path d="m355 685 6 11 11 6-11 6-6 11-6-11-11-6 11-6Z"/></g>
+  <path d="M154 29q41 28 82 0M154 731q41-28 82 0" fill="none" stroke="#edcf6b" stroke-width="2"/>
+</svg>

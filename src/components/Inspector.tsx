@@ -43,7 +43,10 @@ import {
 import { savePicture } from "../utils/savePicture";
 import { applyColorOpacity } from "../utils/colorOpacity";
 import { AnimatedSceneImage } from "./AnimatedSceneImage";
-import { ORNATE_COLOR_SCHEME_PRESETS } from "../utils/sceneColorSchemes";
+import {
+  BOOK_COLOR_SCHEME_PRESETS,
+  ORNATE_COLOR_SCHEME_PRESETS
+} from "../utils/sceneColorSchemes";
 
 interface InspectorProps {
   selectedScene: Scene | null;
@@ -1029,7 +1032,7 @@ function SceneVisualControls({
     scene.imagePath.trim() !== "" ? "image" : "text"
   );
   const [colorSchemeTab, setColorSchemeTab] = useState<
-    "solid" | "gradient" | "ornate"
+    "solid" | "gradient" | "ornate" | "book"
   >("solid");
   const [userTemplates, setUserTemplates] = useState<Array<UserLayoutTemplate | null>>(
     readUserLayoutTemplates
@@ -1572,7 +1575,9 @@ function SceneVisualControls({
                   <div
                     key={choice.id}
                     className={`choice-preview-frame ${
-                      style.choicesBorderEnabled && style.ornamentStyle !== "none"
+                      style.choicesBorderEnabled &&
+                      style.ornamentStyle !== "none" &&
+                      style.choicesFrameStyle === "none"
                         ? "scene-ornament-panel"
                         : ""
                     }`}
@@ -1741,13 +1746,24 @@ function SceneVisualControls({
               >
                 Ornate
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={colorSchemeTab === "book"}
+                className={colorSchemeTab === "book" ? "active" : ""}
+                onClick={() => setColorSchemeTab("book")}
+              >
+                Books
+              </button>
             </div>
             <div className="color-scheme-grid">
               {(colorSchemeTab === "solid"
                 ? COLOR_SCHEME_PRESETS
                 : colorSchemeTab === "gradient"
                   ? GRADIENT_COLOR_SCHEME_PRESETS
-                  : ORNATE_COLOR_SCHEME_PRESETS
+                  : colorSchemeTab === "ornate"
+                    ? ORNATE_COLOR_SCHEME_PRESETS
+                    : BOOK_COLOR_SCHEME_PRESETS
               ).map((preset) => (
                 <button
                   type="button"
@@ -1757,7 +1773,7 @@ function SceneVisualControls({
                     patchStyle({
                       ...preset.colors,
                       ornamentStyle:
-                        colorSchemeTab === "ornate"
+                        colorSchemeTab === "ornate" || colorSchemeTab === "book"
                           ? preset.colors.ornamentStyle ?? "none"
                           : "none"
                     })
@@ -1765,7 +1781,11 @@ function SceneVisualControls({
                   title={`Apply ${preset.name}`}
                 >
                   <span
-                    className="color-scheme-swatch"
+                    className={`color-scheme-swatch ${
+                      colorSchemeTab === "book"
+                        ? `scene-book-swatch scene-ornament-${preset.colors.ornamentStyle}`
+                        : ""
+                    }`}
                     style={{
                       background: preset.colors.backgroundColor,
                       borderColor: preset.colors.titleBorderColor

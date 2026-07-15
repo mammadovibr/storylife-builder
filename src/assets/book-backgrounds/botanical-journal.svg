@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 760">
+  <defs>
+    <linearGradient id="page" x1="0" x2="1"><stop stop-color="#d4c89f"/><stop offset=".1" stop-color="#f3efd8"/><stop offset=".9" stop-color="#f8f4df"/><stop offset="1" stop-color="#cfc096"/></linearGradient>
+    <pattern id="fibers" width="60" height="45" patternUnits="userSpaceOnUse"><path d="M2 14h39M18 37h35" stroke="#807554" opacity=".08"/><circle cx="49" cy="11" r="1" fill="#697555" opacity=".16"/></pattern>
+  </defs>
+  <rect width="390" height="760" fill="url(#page)"/>
+  <rect width="390" height="760" fill="url(#fibers)"/>
+  <path d="M29 760C18 610 42 494 28 354 18 245 37 126 26 0" fill="none" stroke="#405e3c" stroke-width="5" opacity=".72"/>
+  <g fill="#6f8d58" stroke="#365334" stroke-width="1.4" opacity=".82"><path d="M30 105c30-25 45-20 42 5-18 8-31 6-42-5Z"/><path d="M31 181C5 158-8 163 3 187c13 4 22 2 28-6Z"/><path d="M31 294c30-26 48-20 43 7-19 8-32 6-43-7Z"/><path d="M30 476C2 454-9 463 4 487c11 2 20-2 26-11Z"/><path d="M31 608c29-25 46-18 42 7-18 8-31 5-42-7Z"/></g>
+  <path d="M354 0c-5 95 8 176-3 274-9 90 8 179 0 267-6 72 4 145 3 219" fill="none" stroke="#83936b" stroke-width="2" opacity=".4"/>
+  <rect x="43" y="18" width="305" height="724" rx="8" fill="none" stroke="#8b9b70" opacity=".45"/>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 760">
+  <defs>
+    <linearGradient id="paper" x1="0" x2="1"><stop stop-color="#b89661"/><stop offset=".12" stop-color="#e3c98f"/><stop offset=".55" stop-color="#f2dfae"/><stop offset="1" stop-color="#c9a86d"/></linearGradient>
+    <linearGradient id="spine" x1="0" x2="1"><stop stop-color="#3d2518"/><stop offset=".55" stop-color="#765034"/><stop offset="1" stop-color="#2a1911"/></linearGradient>
+    <pattern id="grain" width="46" height="39" patternUnits="userSpaceOnUse"><circle cx="8" cy="13" r="1.2" fill="#76542f" opacity=".18"/><circle cx="31" cy="27" r=".8" fill="#fff7d5" opacity=".3"/><path d="M4 34c9-4 18-3 28 1" fill="none" stroke="#7c5b35" opacity=".1"/></pattern>
+  </defs>
+  <rect width="390" height="760" fill="url(#paper)"/>
+  <rect width="42" height="760" fill="url(#spine)"/>
+  <path d="M38 0c16 105 5 230 12 355 7 129-5 273-12 405" fill="none" stroke="#5c3b25" stroke-width="9" opacity=".7"/>
+  <path d="M50 0c7 122-2 238 5 361 7 119-2 264-5 399" fill="none" stroke="#fff0bd" stroke-width="3" opacity=".45"/>
+  <rect x="53" y="16" width="318" height="728" rx="10" fill="none" stroke="#8e6c3d" stroke-width="2" opacity=".55"/>
+  <rect x="363" width="27" height="760" fill="#815f35" opacity=".2"/>
+  <g stroke="#7f6038" opacity=".38"><path d="M370 0v760M376 0v760M382 0v760"/></g>
+  <rect width="390" height="760" fill="url(#grain)"/>
+</svg>

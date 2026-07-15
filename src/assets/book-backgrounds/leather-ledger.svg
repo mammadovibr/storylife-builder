@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 760">
+  <defs>
+    <linearGradient id="leather" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#26150f"/><stop offset=".5" stop-color="#633924"/><stop offset="1" stop-color="#1b100d"/></linearGradient>
+    <pattern id="pores" width="31" height="27" patternUnits="userSpaceOnUse"><path d="M4 8c6-4 11-2 15 2M17 23c4-3 8-3 11 0" fill="none" stroke="#b77a4d" stroke-width="1" opacity=".13"/></pattern>
+  </defs>
+  <rect width="390" height="760" fill="url(#leather)"/>
+  <rect width="390" height="760" fill="url(#pores)"/>
+  <rect x="21" y="18" width="348" height="724" rx="18" fill="none" stroke="#c99a4d" stroke-width="4"/>
+  <rect x="31" y="28" width="328" height="704" rx="13" fill="none" stroke="#ead08a" stroke-width="1.5" opacity=".8"/>
+  <path d="M66 18v724M79 28v704" stroke="#120a08" stroke-width="5" opacity=".55"/>
+  <g fill="#d9ad61"><circle cx="27" cy="25" r="4"/><circle cx="363" cy="25" r="4"/><circle cx="27" cy="735" r="4"/><circle cx="363" cy="735" r="4"/></g>
+  <g stroke="#d7a958" stroke-width="4" opacity=".75"><path d="M17 112h53M17 155h53M17 605h53M17 648h53"/></g>
+</svg>

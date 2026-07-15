@@ -6,7 +6,7 @@ export function applyColorOpacity(color: string, opacity: number): string {
     return hexToRgba(normalized, alpha);
   }
 
-  if (!/^(?:linear|radial|conic)-gradient\(/i.test(normalized)) {
+  if (!/^(?:repeating-)?(?:linear|radial|conic)-gradient\(/i.test(normalized)) {
     return normalized;
   }
 
