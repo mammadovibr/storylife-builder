@@ -213,10 +213,6 @@ interface Window {
     }): Promise<AIImageResult>;
     getGeneratedImageStorageInfo(): Promise<GeneratedImageStorageInfo>;
     openGeneratedImageFolder(): Promise<{ ok: true }>;
-    deleteGeneratedImage(payload: {
-      filePath: string;
-      retainedPaths?: string[];
-    }): Promise<{ deleted: boolean; reason?: string }>;
     cleanupGeneratedImages(retainedPaths: string[]): Promise<{
       deletedCount: number;
       deletedBytes: number;

@@ -1513,33 +1513,6 @@ ipcMain.handle("ai:openGeneratedImageFolder", async () => {
 });
 
 ipcMain.handle(
-  "ai:deleteGeneratedImage",
-  async (_event, payload: { filePath: string; retainedPaths?: string[] }) => {
-    if (!isManagedGeneratedImage(payload.filePath)) {
-      return { deleted: false as const, reason: "outside-managed-folder" as const };
-    }
-    const candidate = normalizeManagedImagePath(payload.filePath);
-    const retainedPaths = new Set(
-      (payload.retainedPaths ?? [])
-        .filter(isManagedGeneratedImage)
-        .map((filePath) => normalizePathForComparison(normalizeManagedImagePath(filePath)))
-    );
-    if (retainedPaths.has(normalizePathForComparison(candidate))) {
-      return { deleted: false as const, reason: "still-used" as const };
-    }
-    try {
-      await unlink(candidate);
-      return { deleted: true as const };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return { deleted: false as const, reason: "missing" as const };
-      }
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle(
   "ai:cleanupGeneratedImages",
   async (_event, retainedPaths: string[] = []) => {
     const folderPath = getGeneratedImagesDirectory();

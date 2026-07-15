@@ -254,11 +254,6 @@ contextBridge.exposeInMainWorld("storyLife", {
     ipcRenderer.invoke("ai:getGeneratedImageStorageInfo"),
   openGeneratedImageFolder: (): Promise<{ ok: true }> =>
     ipcRenderer.invoke("ai:openGeneratedImageFolder"),
-  deleteGeneratedImage: (payload: {
-    filePath: string;
-    retainedPaths?: string[];
-  }): Promise<{ deleted: boolean; reason?: string }> =>
-    ipcRenderer.invoke("ai:deleteGeneratedImage", payload),
   cleanupGeneratedImages: (
     retainedPaths: string[]
   ): Promise<{

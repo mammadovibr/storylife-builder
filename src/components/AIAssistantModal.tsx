@@ -371,6 +371,44 @@ function collectProjectImagePaths(project: StoryProject): string[] {
   return [...paths];
 }
 
+function collectKnownProjectImagePaths(project: StoryProject): string[] {
+  const paths = new Set(collectProjectImagePaths(project));
+  const addProject = (candidate: unknown) => {
+    try {
+      collectProjectImagePaths(migrateProject(candidate)).forEach((path) => paths.add(path));
+    } catch {
+      // Corrupt or obsolete local drafts must not block manual cache cleanup.
+    }
+  };
+
+  const addStoredJson = (raw: string | null, selectProjects: (parsed: unknown) => unknown[]) => {
+    if (!raw?.trim()) return;
+    try {
+      selectProjects(JSON.parse(raw)).forEach(addProject);
+    } catch {
+      // One corrupt local record must not hide other known project references.
+    }
+  };
+
+  addStoredJson(localStorage.getItem("storylife-autosave-v1"), (parsed) => {
+    const snapshot = parsed as { project?: unknown } | null;
+    return snapshot?.project ? [snapshot.project] : [];
+  });
+  addStoredJson(localStorage.getItem("storylife-backups-v1"), (parsed) =>
+    Array.isArray(parsed)
+      ? parsed.flatMap((snapshot) => {
+          const projectSnapshot = snapshot as { project?: unknown } | null;
+          return projectSnapshot?.project ? [projectSnapshot.project] : [];
+        })
+      : []
+  );
+  for (const key of [AI_PROJECT_JSON_DRAFT_KEY, AI_PROJECT_WORKING_DRAFT_KEY]) {
+    addStoredJson(localStorage.getItem(key), (parsed) => [parsed]);
+  }
+
+  return [...paths];
+}
+
 function formatStorageSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -2976,15 +3014,16 @@ export function AIAssistantModal({
   async function cleanupUnusedGeneratedImages() {
     if (!window.storyLife?.cleanupGeneratedImages || isStorageWorking) return;
     const confirmed = window.confirm(
-      "Permanently delete every generated image not used by the current project? " +
-      "Old plain JSON files and autosaves may still point to those files. Portable .storylife projects keep their own copies."
+      "Permanently delete generated files not used by the current project, its autosave, backups, or AI drafts? " +
+      "Saved .storylife projects contain their own image copies and will remain safe. " +
+      "Legacy JSON projects stored elsewhere may still point to this shared folder; save them as .storylife before cleaning."
     );
     if (!confirmed) return;
 
     setStorageWorking(true);
     try {
       const result = await window.storyLife.cleanupGeneratedImages(
-        collectProjectImagePaths(latestProjectRef.current)
+        collectKnownProjectImagePaths(latestProjectRef.current)
       );
       setGeneratedImageStorage(result.storage);
       setLiveProjectStatus(
@@ -2999,16 +3038,14 @@ export function AIAssistantModal({
     }
   }
 
-  async function deleteImageVariant(sceneId: string, variantId: string) {
+  function deleteImageVariant(sceneId: string, variantId: string) {
     const currentProject = latestProjectRef.current;
     const scene = currentProject.scenes.find((candidate) => candidate.id === sceneId);
     const variant = scene?.imageVariants.find((candidate) => candidate.id === variantId);
     if (!scene || !variant) return;
 
     const label = variant.name || "this image";
-    if (!window.confirm(
-      `Delete ${label} from this project? Its generated file will also be deleted from app storage if no other project item uses it.`
-    )) return;
+    if (!window.confirm(`Delete ${label} from this project?`)) return;
 
     const nextProject: StoryProject = {
       ...currentProject,
@@ -3020,24 +3057,9 @@ export function AIAssistantModal({
     };
     latestProjectRef.current = nextProject;
     onApplyProject(nextProject);
-    try {
-      const result = await window.storyLife?.deleteGeneratedImage?.({
-        filePath: variant.imagePath,
-        retainedPaths: collectProjectImagePaths(nextProject)
-      });
-      setLiveProjectStatus(
-        result?.deleted
-          ? `${label} removed from the project and deleted from disk.`
-          : result?.reason === "still-used"
-            ? `${label} removed here. Its file was kept because the project still uses it.`
-            : `${label} removed from the project.`
-      );
-      await refreshGeneratedImageStorage();
-    } catch (error) {
-      setLiveProjectStatus(
-        `${label} was removed from the project, but its file could not be deleted: ${getErrorMessage(error)}`
-      );
-    }
+    setLiveProjectStatus(
+      `${label} removed from the project. Use storage cleanup when you are ready to remove unreferenced files from disk.`
+    );
   }
 
   async function editCurrentSceneImage() {
@@ -3850,7 +3872,7 @@ export function AIAssistantModal({
                           className="ai-image-variant-delete"
                           title={`Delete ${variant.name || `Image ${index + 1}`}`}
                           aria-label={`Delete ${variant.name || `Image ${index + 1}`}`}
-                          onClick={() => void deleteImageVariant(imageStudioScene.id, variant.id)}
+                          onClick={() => deleteImageVariant(imageStudioScene.id, variant.id)}
                         >
                           X
                         </button>
