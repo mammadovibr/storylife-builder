@@ -3104,7 +3104,7 @@ async function callOpenAIImage({
   const quality = normalizeImageQuality(imageQuality);
   const referenceRequirement = referenceImagePaths.length > 0
     ? preserveReferenceCanvas
-      ? "LOCKED CANVAS REQUIREMENT: Treat the attached image as the complete frame to edit. Preserve its exact aspect ratio, orientation, crop boundaries, camera, subject scale, and visible content. Never expand the view or infer missing anatomy. Do not add a face, head, torso, limb, or object that is outside the source crop. Change only the tiny movement explicitly requested."
+      ? "LOCKED CANVAS REQUIREMENT: Treat the attached image as the complete frame to edit. Preserve its exact aspect ratio, orientation, crop boundaries, camera, subject scale, and visible content. Never expand the view or infer missing anatomy. Change only the details explicitly requested and keep everything else unchanged."
       : "IDENTITY REFERENCE REQUIREMENT: The attached images define the character's identity. The generated image must depict the same recognizable character, preserving facial structure, distinctive features, hair or fur pattern, body shape, costume, and key colors. Change only pose, action, camera, lighting, and environment as requested by the prompt. Do not copy text or UI from the references."
     : "";
   const imagePrompt = [

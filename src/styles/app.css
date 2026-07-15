@@ -3851,6 +3851,65 @@ select {
   z-index: 13000;
 }
 
+.ai-image-edit-backdrop {
+  z-index: 13500;
+}
+
+.ai-image-edit-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+  border: 1px solid #d4ccbe;
+  border-radius: 12px;
+  background: #fdfbf7;
+  box-shadow: 0 28px 90px rgba(49, 43, 35, 0.28);
+  padding: 18px;
+}
+
+.ai-image-edit-content {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(280px, 1.2fr);
+  gap: 14px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.ai-image-edit-preview {
+  display: grid;
+  place-items: center;
+  min-height: 260px;
+  overflow: hidden;
+  border: 1px solid #ded6c8;
+  border-radius: 8px;
+  background: #eee8dc;
+}
+
+.ai-image-edit-preview .ai-image-preview-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ai-image-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 620px) {
+  .ai-image-edit-content {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-image-edit-preview {
+    min-height: 180px;
+  }
+}
+
 .image-animation-backdrop {
   z-index: 14000;
 }
@@ -4141,19 +4200,21 @@ select {
 
 .ai-image-variant-card {
   position: relative;
-  flex: 0 0 88px;
-  width: 88px;
-  min-width: 88px;
-  max-width: 88px;
-  height: 72px;
-  min-height: 72px;
-  max-height: 72px;
+  display: grid;
+  grid-template-rows: 72px auto minmax(36px, auto) auto auto;
+  align-content: start;
+  flex: 0 0 150px;
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
+  min-height: 142px;
   overflow: hidden;
   contain: layout paint;
   border: 2px solid transparent;
   border-radius: 9px;
   padding: 0;
   background: #eee8de;
+  text-align: left;
 }
 
 .ai-image-variant-card.active {
@@ -4162,14 +4223,44 @@ select {
 }
 
 .ai-image-variant-label {
-  position: absolute;
-  inset: auto 2px 2px;
-  z-index: 2;
+  position: static;
   overflow: hidden;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.62);
-  color: white;
-  padding: 2px 4px;
+  background: #25221e;
+  color: #fff;
+  padding: 3px 6px;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-image-variant-card > .ai-image-thumbnail-frame {
+  position: relative;
+  inset: auto;
+  height: 72px;
+}
+
+.ai-image-variant-prompt {
+  display: -webkit-box;
+  overflow: hidden;
+  padding: 5px 6px 2px;
+  color: #3f3932;
+  font-size: 10px;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.ai-image-variant-reference-count {
+  padding: 2px 6px 5px;
+  color: #26715e;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.ai-image-variant-settings {
+  overflow: hidden;
+  padding: 2px 6px;
+  color: #6b5d50;
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4327,9 +4418,10 @@ select {
 
 .ai-character-reference-grid {
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
   min-width: 0;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 .ai-character-reference-card {
@@ -4349,9 +4441,9 @@ select {
 .ai-reference-thumb-button {
   position: relative;
   width: 100%;
-  height: 130px;
-  min-height: 130px;
-  max-height: 130px;
+  height: 82px;
+  min-height: 82px;
+  max-height: 82px;
   overflow: hidden;
   contain: layout paint;
   border: 0;
@@ -4362,12 +4454,12 @@ select {
 
 .ai-character-reference-card.selected .ai-reference-thumb-button::after {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
+  right: 5px;
+  bottom: 5px;
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 20px;
   border: 2px solid #fff;
   border-radius: 50%;
   background: #168467;
@@ -4379,21 +4471,21 @@ select {
 
 .ai-reference-remove-button {
   position: absolute;
-  top: 7px;
-  right: 7px;
+  top: 4px;
+  right: 4px;
   z-index: 2;
   display: grid;
   place-items: center;
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
-  min-height: 28px;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
   border-color: rgba(255, 255, 255, 0.86);
   border-radius: 50%;
   background: rgba(129, 41, 35, 0.9);
   color: #fff;
   padding: 0;
-  font-size: 20px;
+  font-size: 16px;
   line-height: 1;
 }
 

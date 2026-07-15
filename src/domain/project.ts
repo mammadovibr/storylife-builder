@@ -85,6 +85,12 @@ export interface SceneImageVariant {
   imagePath: string;
   name: string;
   prompt: string;
+  referenceIds: string[];
+  useReferences: boolean;
+  imageStyle: string;
+  aspectRatio: string;
+  imageModel: string;
+  imageQuality: "low" | "medium" | "high";
   createdAt: number;
   animation: SceneImageAnimation | null;
 }
@@ -189,6 +195,9 @@ export interface Scene {
   videoLoop: boolean;
   imageVariants: SceneImageVariant[];
   activeImageVariantId: string;
+  imageGenerationPrompt: string;
+  imageGenerationReferenceIds: string[];
+  imageGenerationUseReferences: boolean;
   soundPath: string;
   soundVolume: number;
   soundFadeInSeconds: number;
@@ -427,6 +436,9 @@ export function createScene(index: number, id = `scene_${index}`): Scene {
     videoLoop: true,
     imageVariants: [],
     activeImageVariantId: "",
+    imageGenerationPrompt: "",
+    imageGenerationReferenceIds: [],
+    imageGenerationUseReferences: true,
     soundPath: "",
     soundVolume: 1,
     soundFadeInSeconds: 0,
@@ -451,6 +463,12 @@ export function createSceneImageVariant(
     id?: string;
     name?: string;
     prompt?: string;
+    referenceIds?: string[];
+    useReferences?: boolean;
+    imageStyle?: string;
+    aspectRatio?: string;
+    imageModel?: string;
+    imageQuality?: "low" | "medium" | "high";
     createdAt?: number;
     animation?: SceneImageAnimation | null;
   } = {}
@@ -460,6 +478,12 @@ export function createSceneImageVariant(
     imagePath,
     name: options.name ?? "Image variant",
     prompt: options.prompt ?? "",
+    referenceIds: [...new Set(options.referenceIds ?? [])].slice(0, 3),
+    useReferences: options.useReferences ?? (options.referenceIds?.length ?? 0) > 0,
+    imageStyle: options.imageStyle ?? "",
+    aspectRatio: options.aspectRatio ?? "",
+    imageModel: options.imageModel ?? "",
+    imageQuality: options.imageQuality ?? "low",
     createdAt: options.createdAt ?? Date.now(),
     animation: options.animation ?? null
   };
@@ -469,7 +493,16 @@ export function applySceneVisual(
   scene: Scene,
   imagePath: string,
   visualMediaType: SceneVisualMediaType,
-  variantDetails?: { name?: string; prompt?: string }
+  variantDetails?: {
+    name?: string;
+    prompt?: string;
+    referenceIds?: string[];
+    useReferences?: boolean;
+    imageStyle?: string;
+    aspectRatio?: string;
+    imageModel?: string;
+    imageQuality?: "low" | "medium" | "high";
+  }
 ): Scene {
   if (!imagePath.trim() || visualMediaType === "video") {
     return {
@@ -1248,6 +1281,14 @@ function validateScene(rawScene: unknown): Scene {
       typeof rawScene.videoLoop === "boolean" ? rawScene.videoLoop : true,
     imageVariants: readSceneImageVariants(rawScene, rawScene.id),
     activeImageVariantId: readActiveImageVariantId(rawScene, rawScene.id),
+    imageGenerationPrompt: readString(rawScene.imageGenerationPrompt),
+    imageGenerationReferenceIds: readStringArray(
+      rawScene.imageGenerationReferenceIds
+    ).slice(0, 3),
+    imageGenerationUseReferences:
+      typeof rawScene.imageGenerationUseReferences === "boolean"
+        ? rawScene.imageGenerationUseReferences
+        : true,
     soundPath:
       typeof rawScene.soundPath === "string" ? rawScene.soundPath : "",
     soundVolume: clampNumber(readNumber(rawScene.soundVolume, 1), 0, 1),
@@ -1322,6 +1363,18 @@ function readSceneImageVariant(
       : `image_variant_${sceneId}_${index + 1}`,
     name: typeof rawVariant.name === "string" ? rawVariant.name : `Image ${index + 1}`,
     prompt: typeof rawVariant.prompt === "string" ? rawVariant.prompt : "",
+    referenceIds: readStringArray(rawVariant.referenceIds).slice(0, 3),
+    useReferences:
+      typeof rawVariant.useReferences === "boolean"
+        ? rawVariant.useReferences
+        : readStringArray(rawVariant.referenceIds).length > 0,
+    imageStyle: readString(rawVariant.imageStyle),
+    aspectRatio: readString(rawVariant.aspectRatio),
+    imageModel: readString(rawVariant.imageModel),
+    imageQuality:
+      rawVariant.imageQuality === "medium" || rawVariant.imageQuality === "high"
+        ? rawVariant.imageQuality
+        : "low",
     createdAt: readNumber(rawVariant.createdAt, 0),
     animation: readSceneImageAnimation(rawVariant.animation)
   });

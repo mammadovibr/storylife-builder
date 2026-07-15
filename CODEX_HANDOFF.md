@@ -385,6 +385,22 @@ airplane-mode startup and all 12 cached build files.
 - In a choice's Effects section, `+ Flag` remains enabled when the project has no
   flags. It opens a small inline popover; submitting a name atomically creates the
   project flag and appends a true flag effect to that choice.
+- AI Image Studio now persists its recipe in the project. Every scene stores the
+  current prompt, selected character-reference ids, and the Apply References
+  toggle. Every `SceneImageVariant` stores the source prompt, selected references,
+  reference toggle, style, exact aspect-ratio id, model, and quality. Navigating to
+  a scene restores all controls from its active image automatically; selecting a
+  different variant restores that variant's recipe. Keep aspect-ratio ids separate
+  from API pixel sizes: several ratios share the same supported OpenAI output size.
+- Image variants display their saved prompt and compact recipe under each thumbnail.
+  Character references use a two-column, 82px-thumbnail grid so larger casts do not
+  require excessive vertical scrolling. Removing a character reference also removes
+  its id from scene selections and stored variant metadata.
+- Image Studio has an `Edit Image` dialog. It sends the active variant as a locked
+  source canvas, accepts a focused edit instruction, and saves the result as a new
+  variant while keeping the original. The locked-canvas backend instruction now
+  permits any explicitly requested edit while preserving everything not requested;
+  AI-frame animation still uses the same path safely.
 
 The standalone frontend command below currently reports older type errors in the legacy AI story code and some Inspector helpers:
 

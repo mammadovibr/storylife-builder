@@ -67,7 +67,11 @@ interface ImageQueueItem {
   id: string;
   sceneId: string;
   prompt: string;
+  sourcePrompt: string;
   referenceIds: string[];
+  useReferences: boolean;
+  imageStyle: string;
+  aspectRatio: string;
   imageModel: string;
   imageSize: string;
   imageQuality: "low" | "medium" | "high";
@@ -327,13 +331,13 @@ const IMAGE_STYLE_OPTIONS = [
   }
 ];
 const IMAGE_SIZE_OPTIONS = [
-  { value: "1024x1024", label: "1:1 Square", prompt: "square composition" },
-  { value: "1024x1536", label: "2:3 Vertical", prompt: "vertical 2:3 composition" },
-  { value: "1536x1024", label: "3:2 Horizontal", prompt: "horizontal 3:2 composition" },
-  { value: "1024x1536", label: "3:4 Vertical", prompt: "vertical 3:4 composition" },
-  { value: "1536x1024", label: "4:3 Horizontal", prompt: "horizontal 4:3 composition" },
-  { value: "1536x1024", label: "16:9 Widescreen", prompt: "wide 16:9 composition" },
-  { value: "1024x1536", label: "9:16 Phone Vertical", prompt: "tall 9:16 phone composition" }
+  { value: "1:1", apiSize: "1024x1024", label: "1:1 Square", prompt: "square composition" },
+  { value: "2:3", apiSize: "1024x1536", label: "2:3 Vertical", prompt: "vertical 2:3 composition" },
+  { value: "3:2", apiSize: "1536x1024", label: "3:2 Horizontal", prompt: "horizontal 3:2 composition" },
+  { value: "3:4", apiSize: "1024x1536", label: "3:4 Vertical", prompt: "vertical 3:4 composition" },
+  { value: "4:3", apiSize: "1536x1024", label: "4:3 Horizontal", prompt: "horizontal 4:3 composition" },
+  { value: "16:9", apiSize: "1536x1024", label: "16:9 Widescreen", prompt: "wide 16:9 composition" },
+  { value: "9:16", apiSize: "1024x1536", label: "9:16 Phone Vertical", prompt: "tall 9:16 phone composition" }
 ];
 const INITIAL_MESSAGES: ChatMessage[] = [
   {
@@ -363,15 +367,15 @@ export function AIAssistantModal({
   const [imageStudioSceneIndex, setImageStudioSceneIndex] = useState(() =>
     Math.max(0, project.scenes.findIndex((scene) => scene.id === selectedSceneId))
   );
-  const [imageStudioPrompts, setImageStudioPrompts] = useState<Record<string, string>>({});
-  const [imageStudioSelectedRefs, setImageStudioSelectedRefs] = useState<Record<string, string[]>>({});
-  const [imageStudioUseReferences, setImageStudioUseReferences] = useState<Record<string, boolean>>({});
   const [imageModel, setImageModel] = useState("gpt-image-2");
   const [imageStyle, setImageStyle] = useState(IMAGE_STYLE_OPTIONS[0].value);
   const [imageSize, setImageSize] = useState(IMAGE_SIZE_OPTIONS[1].value);
   const [imageQuality, setImageQuality] = useState<"low" | "medium" | "high">("low");
   const [imageQueue, setImageQueue] = useState<ImageQueueItem[]>([]);
   const [fullPreviewImagePath, setFullPreviewImagePath] = useState<string | null>(null);
+  const [imageEditPrompt, setImageEditPrompt] = useState("");
+  const [isImageEditOpen, setImageEditOpen] = useState(false);
+  const [isImageEditWorking, setImageEditWorking] = useState(false);
   const [animationEditorType, setAnimationEditorType] = useState<
     "procedural" | "aiFrames" | null
   >(null);
@@ -440,24 +444,6 @@ export function AIAssistantModal({
   useEffect(() => {
     latestProjectRef.current = project;
   }, [project]);
-
-  useEffect(() => {
-    const scene = project.scenes[imageStudioSceneIndex];
-    if (!scene || project.characterReferences.length === 0) {
-      return;
-    }
-    setImageStudioSelectedRefs((current) => {
-      if (Object.prototype.hasOwnProperty.call(current, scene.id)) {
-        return current;
-      }
-      return {
-        ...current,
-        [scene.id]: project.characterReferences
-          .slice(0, 3)
-          .map((reference) => reference.id)
-      };
-    });
-  }, [imageStudioSceneIndex, project.characterReferences, project.scenes]);
 
   useEffect(() => {
     imageQueueRef.current = imageQueue;
@@ -2427,7 +2413,7 @@ export function AIAssistantModal({
       const result = await window.storyLife.aiGenerateSceneImage({
         prompt: createFinalImagePrompt(imagePrompt, imageStyle, imageSize),
         imageModel,
-        imageSize,
+        imageSize: getImageApiSize(imageSize),
         imageQuality,
         requestId
       });
@@ -2440,7 +2426,12 @@ export function AIAssistantModal({
           scene.id === selectedScene.id
             ? applySceneVisual(scene, result.filePath, "image", {
                 name: `Generated ${scene.imageVariants.length + 1}`,
-                prompt: imagePrompt
+                prompt: imagePrompt,
+                useReferences: false,
+                imageStyle,
+                aspectRatio: imageSize,
+                imageModel,
+                imageQuality
               })
             : scene
         )
@@ -2496,36 +2487,55 @@ export function AIAssistantModal({
   }
 
   function removeCharacterReference(referenceId: string) {
-    onApplyProject({
-      ...project,
-      characterReferences: project.characterReferences.filter(
+    const currentProject = latestProjectRef.current;
+    const nextProject: StoryProject = {
+      ...currentProject,
+      characterReferences: currentProject.characterReferences.filter(
         (reference) => reference.id !== referenceId
-      )
-    });
-    setImageStudioSelectedRefs((current) =>
-      Object.fromEntries(
-        Object.entries(current).map(([sceneId, referenceIds]) => [
-          sceneId,
-          referenceIds.filter((id) => id !== referenceId)
-        ])
-      )
-    );
+      ),
+      scenes: currentProject.scenes.map((scene) => ({
+        ...scene,
+        imageGenerationReferenceIds: scene.imageGenerationReferenceIds.filter(
+          (id) => id !== referenceId
+        ),
+        imageVariants: scene.imageVariants.map((variant) => ({
+          ...variant,
+          referenceIds: variant.referenceIds.filter((id) => id !== referenceId)
+        }))
+      }))
+    };
+    latestProjectRef.current = nextProject;
+    onApplyProject(nextProject);
   }
 
   function toggleSceneReference(sceneId: string, referenceId: string) {
-    setImageStudioSelectedRefs((current) => {
-      const selectedIds = current[sceneId] ?? [];
-      const nextIds = selectedIds.includes(referenceId)
-        ? selectedIds.filter((id) => id !== referenceId)
-        : selectedIds.length >= 3
-          ? selectedIds
-          : [...selectedIds, referenceId];
+    const scene = latestProjectRef.current.scenes.find((item) => item.id === sceneId);
+    if (!scene) return;
+    const selectedIds = scene.imageGenerationReferenceIds;
+    const nextIds = selectedIds.includes(referenceId)
+      ? selectedIds.filter((id) => id !== referenceId)
+      : selectedIds.length >= 3
+        ? selectedIds
+        : [...selectedIds, referenceId];
+    updateSceneImageGeneration(sceneId, { imageGenerationReferenceIds: nextIds });
+  }
 
-      return {
-        ...current,
-        [sceneId]: nextIds
-      };
-    });
+  function updateSceneImageGeneration(
+    sceneId: string,
+    updates: Partial<Pick<
+      StoryProject["scenes"][number],
+      "imageGenerationPrompt" | "imageGenerationReferenceIds" | "imageGenerationUseReferences"
+    >>
+  ) {
+    const currentProject = latestProjectRef.current;
+    const nextProject: StoryProject = {
+      ...currentProject,
+      scenes: currentProject.scenes.map((scene) =>
+        scene.id === sceneId ? { ...scene, ...updates } : scene
+      )
+    };
+    latestProjectRef.current = nextProject;
+    onApplyProject(nextProject);
   }
 
   function enqueueCurrentImageScene() {
@@ -2541,20 +2551,20 @@ export function AIAssistantModal({
       return;
     }
 
-    const prompt = createFinalImagePrompt(
-      imageStudioPrompts[scene.id] ?? imagePrompt,
-      imageStyle,
-      imageSize
-    );
-    const useReferences = imageStudioUseReferences[scene.id] ?? true;
-    const referenceIds = useReferences ? imageStudioSelectedRefs[scene.id] ?? [] : [];
+    const sourcePrompt = scene.imageGenerationPrompt;
+    const prompt = createFinalImagePrompt(sourcePrompt, imageStyle, imageSize);
+    const referenceIds = scene.imageGenerationReferenceIds;
     const item: ImageQueueItem = {
       id: createRequestId(),
       sceneId: scene.id,
       prompt,
+      sourcePrompt,
       referenceIds,
+      useReferences: scene.imageGenerationUseReferences,
+      imageStyle,
+      aspectRatio: imageSize,
       imageModel,
-      imageSize,
+      imageSize: getImageApiSize(imageSize),
       imageQuality,
       status: "queued"
     };
@@ -2612,7 +2622,7 @@ export function AIAssistantModal({
           continue;
         }
 
-        const referenceImagePaths = nextItem.referenceIds
+        const referenceImagePaths = (nextItem.useReferences ? nextItem.referenceIds : [])
           .map((referenceId) =>
             currentProject.characterReferences.find((reference) => reference.id === referenceId)
           )
@@ -2643,7 +2653,13 @@ export function AIAssistantModal({
               currentScene.id === scene.id
                 ? applySceneVisual(currentScene, result.filePath, "image", {
                     name: `Generated ${currentScene.imageVariants.length + 1}`,
-                    prompt: nextItem.prompt
+                    prompt: nextItem.sourcePrompt,
+                    referenceIds: nextItem.referenceIds,
+                    useReferences: nextItem.useReferences,
+                    imageStyle: nextItem.imageStyle,
+                    aspectRatio: nextItem.aspectRatio,
+                    imageModel: nextItem.imageModel,
+                    imageQuality: nextItem.imageQuality
                   })
                 : currentScene
             )
@@ -2775,16 +2791,17 @@ export function AIAssistantModal({
       id: createRequestId(),
       sceneId: scene.id,
       prompt: createFinalImagePrompt(
-        imageStudioPrompts[scene.id] ?? imagePrompt,
+        scene.imageGenerationPrompt,
         imageStyle,
         imageSize
       ),
-      referenceIds:
-        (imageStudioUseReferences[scene.id] ?? true)
-          ? imageStudioSelectedRefs[scene.id] ?? []
-          : [],
+      sourcePrompt: scene.imageGenerationPrompt,
+      imageStyle,
+      aspectRatio: imageSize,
+      referenceIds: scene.imageGenerationReferenceIds,
+      useReferences: scene.imageGenerationUseReferences,
       imageModel,
-      imageSize,
+      imageSize: getImageApiSize(imageSize),
       imageQuality,
       status: "queued" as const
     }));
@@ -2858,14 +2875,118 @@ export function AIAssistantModal({
 
   function selectImageVariant(sceneId: string, variantId: string) {
     const currentProject = latestProjectRef.current;
+    const selectedVariant = currentProject.scenes
+      .find((scene) => scene.id === sceneId)
+      ?.imageVariants.find((variant) => variant.id === variantId);
+    if (selectedVariant?.imageStyle && IMAGE_STYLE_OPTIONS.some(
+      (option) => option.value === selectedVariant.imageStyle
+    )) {
+      setImageStyle(selectedVariant.imageStyle);
+    }
+    if (selectedVariant?.aspectRatio && IMAGE_SIZE_OPTIONS.some(
+      (option) => option.value === selectedVariant.aspectRatio
+    )) {
+      setImageSize(selectedVariant.aspectRatio);
+    }
+    if (selectedVariant?.imageModel && IMAGE_MODEL_OPTIONS.some(
+      (option) => option.value === selectedVariant.imageModel
+    )) {
+      setImageModel(selectedVariant.imageModel);
+    }
+    if (selectedVariant?.imageQuality) {
+      setImageQuality(selectedVariant.imageQuality);
+    }
     const nextProject: StoryProject = {
       ...currentProject,
       scenes: currentProject.scenes.map((scene) =>
-        scene.id === sceneId ? activateSceneImageVariant(scene, variantId) : scene
+        scene.id === sceneId
+          ? (() => {
+              const variant = scene.imageVariants.find((item) => item.id === variantId);
+              const activatedScene = activateSceneImageVariant(scene, variantId);
+              return variant
+                ? {
+                    ...activatedScene,
+                    imageGenerationPrompt: variant.prompt,
+                    imageGenerationReferenceIds: variant.referenceIds,
+                    imageGenerationUseReferences: variant.useReferences
+                  }
+                : activatedScene;
+            })()
+          : scene
       )
     };
     latestProjectRef.current = nextProject;
     onApplyProject(nextProject);
+  }
+
+  async function editCurrentSceneImage() {
+    if (
+      !imageStudioScene ||
+      !imageStudioActiveVariant ||
+      !window.storyLife?.aiGenerateSceneImage ||
+      imageEditPrompt.trim() === "" ||
+      isImageEditWorking ||
+      isWorking
+    ) {
+      return;
+    }
+
+    const requestId = createRequestId();
+    const sceneId = imageStudioScene.id;
+    const sourceVariant = imageStudioActiveVariant;
+    stopRequestedRef.current = false;
+    activeImageRequestIdRef.current = requestId;
+    setImageEditWorking(true);
+    setStage("thinking");
+    setLiveProjectStatus(`Editing ${imageStudioScene.title || imageStudioScene.id}...`);
+
+    try {
+      const result = await window.storyLife.aiGenerateSceneImage({
+        prompt: imageEditPrompt.trim(),
+        referenceImagePaths: [sourceVariant.imagePath],
+        imageModel,
+        imageSize: getImageApiSize(
+          sourceVariant.aspectRatio || imageSize
+        ),
+        imageQuality,
+        preserveReferenceCanvas: true,
+        requestId
+      });
+      const currentProject = latestProjectRef.current;
+      const nextProject: StoryProject = {
+        ...currentProject,
+        scenes: currentProject.scenes.map((scene) =>
+          scene.id === sceneId
+            ? applySceneVisual(scene, result.filePath, "image", {
+                name: `Edited ${scene.imageVariants.length + 1}`,
+                prompt: imageEditPrompt.trim(),
+                referenceIds: sourceVariant.referenceIds,
+                useReferences: sourceVariant.useReferences,
+                imageStyle: sourceVariant.imageStyle || imageStyle,
+                aspectRatio: sourceVariant.aspectRatio || imageSize,
+                imageModel: sourceVariant.imageModel || imageModel,
+                imageQuality: sourceVariant.imageQuality || imageQuality
+              })
+            : scene
+        )
+      };
+      latestProjectRef.current = nextProject;
+      onApplyProject(nextProject);
+      setImageEditPrompt("");
+      setImageEditOpen(false);
+      setStage("done");
+      setLiveProjectStatus("Edited image saved as a new variant.");
+    } catch (error) {
+      if (!stopRequestedRef.current) {
+        setStage("error");
+        setLiveProjectStatus(getErrorMessage(error));
+      }
+    } finally {
+      if (activeImageRequestIdRef.current === requestId) {
+        activeImageRequestIdRef.current = null;
+      }
+      setImageEditWorking(false);
+    }
   }
 
   function setCurrentAnimationEnabled(enabled: boolean) {
@@ -2883,16 +3004,50 @@ export function AIAssistantModal({
     ? getActiveSceneImageVariant(imageStudioScene)
     : null;
   const imageStudioScenePrompt = imageStudioScene
-    ? imageStudioPrompts[imageStudioScene.id] ?? imagePrompt
+    ? imageStudioScene.imageGenerationPrompt
     : "";
   const imageStudioSelectedReferenceIds = imageStudioScene
-    ? imageStudioSelectedRefs[imageStudioScene.id] ?? []
+    ? imageStudioScene.imageGenerationReferenceIds
     : [];
   const imageStudioReferencesEnabled = imageStudioScene
-    ? imageStudioUseReferences[imageStudioScene.id] ?? true
+    ? imageStudioScene.imageGenerationUseReferences
     : true;
   const queuedImageCount = imageQueue.filter((item) => item.status === "queued").length;
   const runningImageCount = imageQueue.filter((item) => item.status === "running").length;
+
+  useEffect(() => {
+    if (!imageStudioScene || !imageStudioActiveVariant) return;
+    const variant = imageStudioActiveVariant;
+    if (variant.imageStyle && IMAGE_STYLE_OPTIONS.some(
+      (option) => option.value === variant.imageStyle
+    )) {
+      setImageStyle(variant.imageStyle);
+    }
+    if (variant.aspectRatio && IMAGE_SIZE_OPTIONS.some(
+      (option) => option.value === variant.aspectRatio
+    )) {
+      setImageSize(variant.aspectRatio);
+    }
+    if (variant.imageModel && IMAGE_MODEL_OPTIONS.some(
+      (option) => option.value === variant.imageModel
+    )) {
+      setImageModel(variant.imageModel);
+    }
+    setImageQuality(variant.imageQuality);
+
+    if (
+      imageStudioScene.imageGenerationPrompt !== variant.prompt ||
+      imageStudioScene.imageGenerationUseReferences !== variant.useReferences ||
+      imageStudioScene.imageGenerationReferenceIds.join("\u0000") !==
+        variant.referenceIds.join("\u0000")
+    ) {
+      updateSceneImageGeneration(imageStudioScene.id, {
+        imageGenerationPrompt: variant.prompt,
+        imageGenerationReferenceIds: variant.referenceIds,
+        imageGenerationUseReferences: variant.useReferences
+      });
+    }
+  }, [imageStudioSceneIndex, imageStudioActiveVariant?.id]);
 
   return createPortal(
     <>
@@ -3333,6 +3488,16 @@ export function AIAssistantModal({
               </button>
               <button
                 type="button"
+                disabled={!imageStudioActiveVariant || !canGenerateSceneImage || isWorking}
+                onClick={() => {
+                  setImageEditPrompt("");
+                  setImageEditOpen(true);
+                }}
+              >
+                Edit Image
+              </button>
+              <button
+                type="button"
                 disabled={!imageStudioActiveVariant || !canGenerateSceneImage}
                 onClick={() => setAnimationEditorType("aiFrames")}
               >
@@ -3513,6 +3678,17 @@ export function AIAssistantModal({
                         <span className="ai-image-variant-label">
                           {variant.name || `Image ${index + 1}`}
                         </span>
+                        <span className="ai-image-variant-prompt">{variant.prompt}</span>
+                        <span className="ai-image-variant-settings">
+                          {getImageStyleLabel(variant.imageStyle)}
+                          {variant.aspectRatio ? ` · ${variant.aspectRatio}` : ""}
+                        </span>
+                        {variant.referenceIds.length > 0 && (
+                          <span className="ai-image-variant-reference-count">
+                            {variant.referenceIds.length} reference{variant.referenceIds.length === 1 ? "" : "s"}
+                            {!variant.useReferences ? " · off" : ""}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -3567,12 +3743,9 @@ export function AIAssistantModal({
                 <textarea
                   value={imageStudioScenePrompt}
                   rows={7}
-                  onChange={(event) =>
-                    setImageStudioPrompts((current) => ({
-                      ...current,
-                      [imageStudioScene.id]: event.target.value
-                    }))
-                  }
+                  onChange={(event) => updateSceneImageGeneration(imageStudioScene.id, {
+                    imageGenerationPrompt: event.target.value
+                  })}
                 />
               </label>
 
@@ -3590,12 +3763,9 @@ export function AIAssistantModal({
                 <input
                   type="checkbox"
                   checked={imageStudioReferencesEnabled}
-                  onChange={(event) =>
-                    setImageStudioUseReferences((current) => ({
-                      ...current,
-                      [imageStudioScene.id]: event.target.checked
-                    }))
-                  }
+                  onChange={(event) => updateSceneImageGeneration(imageStudioScene.id, {
+                    imageGenerationUseReferences: event.target.checked
+                  })}
                 />
                 <span>Apply references</span>
               </label>
@@ -3655,13 +3825,76 @@ export function AIAssistantModal({
         </section>
       </div>
     )}
+    {isImageEditOpen && imageStudioScene && imageStudioActiveVariant && (
+      <div
+        className="modal-backdrop ai-image-edit-backdrop"
+        role="presentation"
+        onMouseDown={() => {
+          if (!isImageEditWorking) setImageEditOpen(false);
+        }}
+      >
+        <section
+          className="ai-image-edit-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Edit image with AI"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="modal-heading">
+            <div>
+              <h2>Edit Image</h2>
+              <p>The original stays saved. The edit becomes a new image variant.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setImageEditOpen(false)}
+              disabled={isImageEditWorking}
+            >
+              Close
+            </button>
+          </div>
+          <div className="ai-image-edit-content">
+            <div className="ai-image-edit-preview">
+              <AIImagePreview imagePath={imageStudioActiveVariant.imagePath} />
+            </div>
+            <label className="field-label">
+              What should AI change?
+              <textarea
+                value={imageEditPrompt}
+                rows={8}
+                autoFocus
+                placeholder="Example: change the jacket to red, keep the character, pose, framing and background unchanged"
+                onChange={(event) => setImageEditPrompt(event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="ai-image-edit-actions">
+            <button
+              type="button"
+              onClick={() => setImageEditOpen(false)}
+              disabled={isImageEditWorking}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => void editCurrentSceneImage()}
+              disabled={imageEditPrompt.trim() === "" || isImageEditWorking || isWorking}
+            >
+              {isImageEditWorking ? "Editing..." : "Create Edited Variant"}
+            </button>
+          </div>
+        </section>
+      </div>
+    )}
     {animationEditorType && imageStudioScene && imageStudioActiveVariant && (
       <ImageAnimationModal
         initialType={animationEditorType}
         sceneTitle={imageStudioScene.title || imageStudioScene.id}
         variant={imageStudioActiveVariant}
         imageModel={imageModel}
-        imageSize={imageSize}
+        imageSize={getImageApiSize(imageSize)}
         onStatus={setLiveProjectStatus}
         onClose={() => setAnimationEditorType(null)}
         onApply={(animation) => {
@@ -5851,6 +6084,16 @@ function createFinalImagePrompt(prompt: string, styleValue: string, sizeValue: s
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function getImageApiSize(aspectRatio: string): string {
+  return IMAGE_SIZE_OPTIONS.find((option) => option.value === aspectRatio)?.apiSize
+    ?? "1024x1536";
+}
+
+function getImageStyleLabel(styleValue: string): string {
+  return IMAGE_STYLE_OPTIONS.find((option) => option.value === styleValue)?.label
+    ?? styleValue;
 }
 
 function normalizeStoryStyleIds(storyStyles: unknown): string[] {

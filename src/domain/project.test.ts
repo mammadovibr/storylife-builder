@@ -317,6 +317,46 @@ describe("project domain", () => {
     expect(getActiveSceneImageVariant(scene)?.name).toBe("First");
   });
 
+  it("keeps image prompts, generation settings, and character references in the project", () => {
+    const project = createDefaultProject();
+    project.scenes[0] = applySceneVisual(
+      {
+        ...project.scenes[0],
+        imageGenerationPrompt: "A hero under warm lantern light",
+        imageGenerationReferenceIds: ["hero", "friend"],
+        imageGenerationUseReferences: true
+      },
+      "C:\\images\\generated.jpg",
+      "image",
+      {
+        name: "Generated 1",
+        prompt: "A hero under warm lantern light",
+        referenceIds: ["hero", "friend"],
+        useReferences: true,
+        imageStyle: "cinematicRealism",
+        aspectRatio: "16:9",
+        imageModel: "gpt-image-2",
+        imageQuality: "high"
+      }
+    );
+
+    const restored = migrateProject(JSON.parse(JSON.stringify(project)));
+    const scene = restored.scenes[0];
+    const variant = getActiveSceneImageVariant(scene);
+
+    expect(scene.imageGenerationPrompt).toBe("A hero under warm lantern light");
+    expect(scene.imageGenerationReferenceIds).toEqual(["hero", "friend"]);
+    expect(variant).toMatchObject({
+      prompt: "A hero under warm lantern light",
+      referenceIds: ["hero", "friend"],
+      useReferences: true,
+      imageStyle: "cinematicRealism",
+      aspectRatio: "16:9",
+      imageModel: "gpt-image-2",
+      imageQuality: "high"
+    });
+  });
+
   it("checks parameter and flag conditions", () => {
     const project = createDefaultProject();
     const parameter = createParameter(1);
