@@ -58,6 +58,12 @@ type AIProjectResult = { ok: true; projectJson: string };
 
 type AIImageResult = { ok: true; filePath: string };
 
+interface GeneratedImageStorageInfo {
+  folderPath: string;
+  fileCount: number;
+  totalBytes: number;
+}
+
 interface Window {
   storyLife?: {
     confirmClose(): Promise<{ ok: boolean }>;
@@ -205,6 +211,17 @@ interface Window {
       preserveReferenceCanvas?: boolean;
       requestId?: string;
     }): Promise<AIImageResult>;
+    getGeneratedImageStorageInfo(): Promise<GeneratedImageStorageInfo>;
+    openGeneratedImageFolder(): Promise<{ ok: true }>;
+    deleteGeneratedImage(payload: {
+      filePath: string;
+      retainedPaths?: string[];
+    }): Promise<{ deleted: boolean; reason?: string }>;
+    cleanupGeneratedImages(retainedPaths: string[]): Promise<{
+      deletedCount: number;
+      deletedBytes: number;
+      storage: GeneratedImageStorageInfo;
+    }>;
     aiCancel(requestId: string): Promise<{ ok: true }>;
   };
 }

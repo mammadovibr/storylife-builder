@@ -3876,7 +3876,7 @@ select {
 
 .ai-image-studio-modal {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 16px;
   width: min(1320px, calc(100vw - 24px));
   min-width: 0;
@@ -3888,6 +3888,52 @@ select {
   background: #fdfbf7;
   box-shadow: 0 28px 90px rgba(49, 43, 35, 0.24);
   padding: 18px;
+}
+
+.ai-image-storage-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid #d9d0c3;
+  border-radius: 8px;
+  background: #f7f3eb;
+  padding: 8px 10px;
+}
+
+.ai-image-storage-summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(160px, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ai-image-storage-summary span {
+  color: #6b5d50;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ai-image-storage-summary code {
+  min-width: 0;
+  overflow: hidden;
+  color: #75695d;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-image-storage-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+}
+
+.ai-image-storage-actions button {
+  min-height: 32px;
+  padding: 5px 9px;
 }
 
 .modal-backdrop:has(.ai-image-studio-modal) {
@@ -4247,9 +4293,6 @@ select {
 
 .ai-image-variant-card {
   position: relative;
-  display: grid;
-  grid-template-rows: 72px auto minmax(36px, auto) auto auto;
-  align-content: start;
   flex: 0 0 150px;
   width: 150px;
   min-width: 150px;
@@ -4262,6 +4305,29 @@ select {
   padding: 0;
   background: #eee8de;
   text-align: left;
+}
+
+.ai-image-variant-select {
+  display: grid;
+  grid-template-rows: 72px auto minmax(36px, auto) auto auto;
+  align-content: start;
+  width: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  border: 0;
+  border-radius: 7px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.ai-image-variant-select:hover,
+.ai-image-variant-select:active {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
 }
 
 .ai-image-variant-card.active {
@@ -4280,10 +4346,38 @@ select {
   white-space: nowrap;
 }
 
-.ai-image-variant-card > .ai-image-thumbnail-frame {
+.ai-image-variant-select > .ai-image-thumbnail-frame {
   position: relative;
   inset: auto;
   height: 72px;
+}
+
+.ai-image-variant-delete {
+  position: absolute;
+  z-index: 3;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
+  border: 1px solid rgba(126, 37, 30, 0.58);
+  border-radius: 50%;
+  padding: 0;
+  background: rgba(255, 248, 245, 0.94);
+  box-shadow: 0 3px 10px rgba(48, 24, 20, 0.24);
+  color: #a32d38;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.ai-image-variant-delete:hover {
+  border-color: #8f241f;
+  background: #fff0ed;
+  color: #7f171d;
 }
 
 .ai-image-variant-prompt {

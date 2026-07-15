@@ -16,6 +16,7 @@ import {
   createScene,
   getActiveSceneImageVariant,
   migrateProject,
+  removeSceneImageVariant,
   resolveChoiceTarget
 } from "./project";
 
@@ -315,6 +316,29 @@ describe("project domain", () => {
     scene = activateSceneImageVariant(scene, firstVariantId);
     expect(scene.imagePath).toContain("first.jpg");
     expect(getActiveSceneImageVariant(scene)?.name).toBe("First");
+  });
+
+  it("removes image variants and selects the nearest remaining image", () => {
+    let scene = createScene(1);
+    scene = applySceneVisual(scene, "C:\\images\\first.jpg", "image", {
+      name: "First",
+      prompt: "First prompt"
+    });
+    scene = applySceneVisual(scene, "C:\\images\\second.jpg", "image", {
+      name: "Second",
+      prompt: "Second prompt"
+    });
+    const secondVariantId = scene.activeImageVariantId;
+
+    scene = removeSceneImageVariant(scene, secondVariantId);
+    expect(scene.imageVariants).toHaveLength(1);
+    expect(scene.imagePath).toContain("first.jpg");
+    expect(scene.imageGenerationPrompt).toBe("First prompt");
+
+    scene = removeSceneImageVariant(scene, scene.activeImageVariantId);
+    expect(scene.imageVariants).toHaveLength(0);
+    expect(scene.imagePath).toBe("");
+    expect(scene.activeImageVariantId).toBe("");
   });
 
   it("keeps image prompts, generation settings, and character references in the project", () => {

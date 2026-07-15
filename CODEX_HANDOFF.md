@@ -417,6 +417,17 @@ airplane-mode startup and all 12 cached build files.
   Selecting any crafted choice frame suppresses the project ornament on choice
   buttons only, preventing doubled borders while title and scene-text ornaments stay
   intact. Migration tests cover both a book ornament id and `crafted_35` persistence.
+- Image Studio image-variant cards have a dedicated delete control. Removal asks for
+  confirmation, removes the variant from the project, and deletes its managed source
+  file from disk only when no other item in the current project uses that path.
+  Deleting the active variant selects the nearest remaining variant and restores its
+  prompt/reference recipe; deleting the last one clears the scene image.
+- Desktop Image Studio shows generated-image storage statistics and its exact folder.
+  `Open Folder` opens `app.getPath("userData")/ai-generated-images`; `Clean unused`
+  permanently deletes only managed files that are not referenced by the current
+  project, including character references, variants, and animation frames. The UI
+  warns that old plain JSON/autosaves may still point to those files, while portable
+  `.storylife` archives keep their own embedded copies.
 
 The standalone frontend command below currently reports older type errors in the legacy AI story code and some Inspector helpers:
 

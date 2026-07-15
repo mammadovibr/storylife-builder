@@ -9,6 +9,7 @@ import {
   createScene,
   getActiveSceneImageVariant,
   migrateProject,
+  removeSceneImageVariant,
   serializeProject,
   SceneImageAnimation,
   StoryProject
@@ -349,6 +350,33 @@ const INITIAL_MESSAGES: ChatMessage[] = [
 const SHOW_STORY_AI = false;
 const SHOW_IMAGE_STUDIO_SIDEBAR = false;
 
+function collectProjectImagePaths(project: StoryProject): string[] {
+  const paths = new Set<string>();
+  const add = (path: string | undefined) => {
+    if (path?.trim()) paths.add(path);
+  };
+
+  project.characterReferences.forEach((reference) => add(reference.imagePath));
+  project.scenes.forEach((scene) => {
+    add(scene.imagePath);
+    scene.imageVariants.forEach((variant) => {
+      add(variant.imagePath);
+      if (!variant.animation) return;
+      add(variant.animation.sourceImagePath);
+      if (variant.animation.type === "aiFrames") {
+        variant.animation.frames.forEach((frame) => add(frame.imagePath));
+      }
+    });
+  });
+  return [...paths];
+}
+
+function formatStorageSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function AIAssistantModal({
   project,
   selectedSceneId,
@@ -376,6 +404,9 @@ export function AIAssistantModal({
   const [imageEditPrompt, setImageEditPrompt] = useState("");
   const [isImageEditOpen, setImageEditOpen] = useState(false);
   const [isImageEditWorking, setImageEditWorking] = useState(false);
+  const [generatedImageStorage, setGeneratedImageStorage] =
+    useState<GeneratedImageStorageInfo | null>(null);
+  const [isStorageWorking, setStorageWorking] = useState(false);
   const [animationEditorType, setAnimationEditorType] = useState<
     "procedural" | "aiFrames" | null
   >(null);
@@ -448,6 +479,11 @@ export function AIAssistantModal({
   useEffect(() => {
     imageQueueRef.current = imageQueue;
   }, [imageQueue]);
+
+  useEffect(() => {
+    if (!isImageStudioOpen) return;
+    void refreshGeneratedImageStorage();
+  }, [isImageStudioOpen]);
 
   useEffect(() => {
     if (!imageQueue.some((item) => item.status === "running")) {
@@ -2919,6 +2955,91 @@ export function AIAssistantModal({
     onApplyProject(nextProject);
   }
 
+  async function refreshGeneratedImageStorage() {
+    if (!window.storyLife?.getGeneratedImageStorageInfo) return;
+    try {
+      setGeneratedImageStorage(await window.storyLife.getGeneratedImageStorageInfo());
+    } catch (error) {
+      setLiveProjectStatus(getErrorMessage(error));
+    }
+  }
+
+  async function openGeneratedImageFolder() {
+    if (!window.storyLife?.openGeneratedImageFolder) return;
+    try {
+      await window.storyLife.openGeneratedImageFolder();
+    } catch (error) {
+      setLiveProjectStatus(getErrorMessage(error));
+    }
+  }
+
+  async function cleanupUnusedGeneratedImages() {
+    if (!window.storyLife?.cleanupGeneratedImages || isStorageWorking) return;
+    const confirmed = window.confirm(
+      "Permanently delete every generated image not used by the current project? " +
+      "Old plain JSON files and autosaves may still point to those files. Portable .storylife projects keep their own copies."
+    );
+    if (!confirmed) return;
+
+    setStorageWorking(true);
+    try {
+      const result = await window.storyLife.cleanupGeneratedImages(
+        collectProjectImagePaths(latestProjectRef.current)
+      );
+      setGeneratedImageStorage(result.storage);
+      setLiveProjectStatus(
+        result.deletedCount > 0
+          ? `Deleted ${result.deletedCount} unused image files (${formatStorageSize(result.deletedBytes)}).`
+          : "No unused generated images were found."
+      );
+    } catch (error) {
+      setLiveProjectStatus(getErrorMessage(error));
+    } finally {
+      setStorageWorking(false);
+    }
+  }
+
+  async function deleteImageVariant(sceneId: string, variantId: string) {
+    const currentProject = latestProjectRef.current;
+    const scene = currentProject.scenes.find((candidate) => candidate.id === sceneId);
+    const variant = scene?.imageVariants.find((candidate) => candidate.id === variantId);
+    if (!scene || !variant) return;
+
+    const label = variant.name || "this image";
+    if (!window.confirm(
+      `Delete ${label} from this project? Its generated file will also be deleted from app storage if no other project item uses it.`
+    )) return;
+
+    const nextProject: StoryProject = {
+      ...currentProject,
+      scenes: currentProject.scenes.map((candidate) =>
+        candidate.id === sceneId
+          ? removeSceneImageVariant(candidate, variantId)
+          : candidate
+      )
+    };
+    latestProjectRef.current = nextProject;
+    onApplyProject(nextProject);
+    try {
+      const result = await window.storyLife?.deleteGeneratedImage?.({
+        filePath: variant.imagePath,
+        retainedPaths: collectProjectImagePaths(nextProject)
+      });
+      setLiveProjectStatus(
+        result?.deleted
+          ? `${label} removed from the project and deleted from disk.`
+          : result?.reason === "still-used"
+            ? `${label} removed here. Its file was kept because the project still uses it.`
+            : `${label} removed from the project.`
+      );
+      await refreshGeneratedImageStorage();
+    } catch (error) {
+      setLiveProjectStatus(
+        `${label} was removed from the project, but its file could not be deleted: ${getErrorMessage(error)}`
+      );
+    }
+  }
+
   async function editCurrentSceneImage() {
     if (
       !imageStudioScene ||
@@ -3537,6 +3658,37 @@ export function AIAssistantModal({
             </div>
           </div>
 
+          {window.storyLife?.getGeneratedImageStorageInfo && (
+            <div className="ai-image-storage-bar">
+              <div className="ai-image-storage-summary">
+                <strong>Generated image storage</strong>
+                <span>
+                  {generatedImageStorage
+                    ? `${generatedImageStorage.fileCount} files · ${formatStorageSize(generatedImageStorage.totalBytes)}`
+                    : "Checking..."}
+                </span>
+                {generatedImageStorage && (
+                  <code title={generatedImageStorage.folderPath}>
+                    {generatedImageStorage.folderPath}
+                  </code>
+                )}
+              </div>
+              <div className="ai-image-storage-actions">
+                <button type="button" onClick={() => void openGeneratedImageFolder()}>
+                  Open Folder
+                </button>
+                <button
+                  type="button"
+                  className="danger-button"
+                  disabled={isStorageWorking || generatedImageStorage?.fileCount === 0}
+                  onClick={() => void cleanupUnusedGeneratedImages()}
+                >
+                  {isStorageWorking ? "Cleaning..." : "Clean unused"}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="ai-image-studio-body">
             <aside className="ai-character-reference-panel">
               <section className="ai-image-scene-context" aria-label="Scene context">
@@ -3663,33 +3815,46 @@ export function AIAssistantModal({
                   </div>
                   <div className="ai-image-variant-strip">
                     {imageStudioScene.imageVariants.map((variant, index) => (
-                      <button
-                        type="button"
+                      <div
                         key={variant.id}
                         className={`ai-image-variant-card ${
                           imageStudioActiveVariant?.id === variant.id ? "active" : ""
                         }`}
-                        title={`${variant.name}${variant.animation ? " · animated" : ""}`}
-                        onClick={() => selectImageVariant(imageStudioScene.id, variant.id)}
                       >
-                        <span className="ai-image-thumbnail-frame ai-image-thumbnail-frame-cover">
-                          <AIImagePreview imagePath={variant.imagePath} />
-                        </span>
-                        <span className="ai-image-variant-label">
-                          {variant.name || `Image ${index + 1}`}
-                        </span>
-                        <span className="ai-image-variant-prompt">{variant.prompt}</span>
-                        <span className="ai-image-variant-settings">
-                          {getImageStyleLabel(variant.imageStyle)}
-                          {variant.aspectRatio ? ` · ${variant.aspectRatio}` : ""}
-                        </span>
-                        {variant.referenceIds.length > 0 && (
-                          <span className="ai-image-variant-reference-count">
-                            {variant.referenceIds.length} reference{variant.referenceIds.length === 1 ? "" : "s"}
-                            {!variant.useReferences ? " · off" : ""}
+                        <button
+                          type="button"
+                          className="ai-image-variant-select"
+                          title={`${variant.name}${variant.animation ? " · animated" : ""}`}
+                          onClick={() => selectImageVariant(imageStudioScene.id, variant.id)}
+                        >
+                          <span className="ai-image-thumbnail-frame ai-image-thumbnail-frame-cover">
+                            <AIImagePreview imagePath={variant.imagePath} />
                           </span>
-                        )}
-                      </button>
+                          <span className="ai-image-variant-label">
+                            {variant.name || `Image ${index + 1}`}
+                          </span>
+                          <span className="ai-image-variant-prompt">{variant.prompt}</span>
+                          <span className="ai-image-variant-settings">
+                            {getImageStyleLabel(variant.imageStyle)}
+                            {variant.aspectRatio ? ` · ${variant.aspectRatio}` : ""}
+                          </span>
+                          {variant.referenceIds.length > 0 && (
+                            <span className="ai-image-variant-reference-count">
+                              {variant.referenceIds.length} reference{variant.referenceIds.length === 1 ? "" : "s"}
+                              {!variant.useReferences ? " · off" : ""}
+                            </span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          className="ai-image-variant-delete"
+                          title={`Delete ${variant.name || `Image ${index + 1}`}`}
+                          aria-label={`Delete ${variant.name || `Image ${index + 1}`}`}
+                          onClick={() => void deleteImageVariant(imageStudioScene.id, variant.id)}
+                        >
+                          X
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </section>

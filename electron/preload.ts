@@ -58,6 +58,12 @@ export type AIProjectResult = { ok: true; projectJson: string };
 
 export type AIImageResult = { ok: true; filePath: string };
 
+export interface GeneratedImageStorageInfo {
+  folderPath: string;
+  fileCount: number;
+  totalBytes: number;
+}
+
 contextBridge.exposeInMainWorld("storyLife", {
   confirmClose: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("app:confirmClose"),
   onCloseRequested: (callback: () => void) => {
@@ -244,6 +250,22 @@ contextBridge.exposeInMainWorld("storyLife", {
     preserveReferenceCanvas?: boolean;
     requestId?: string;
   }): Promise<AIImageResult> => ipcRenderer.invoke("ai:generateSceneImage", payload),
+  getGeneratedImageStorageInfo: (): Promise<GeneratedImageStorageInfo> =>
+    ipcRenderer.invoke("ai:getGeneratedImageStorageInfo"),
+  openGeneratedImageFolder: (): Promise<{ ok: true }> =>
+    ipcRenderer.invoke("ai:openGeneratedImageFolder"),
+  deleteGeneratedImage: (payload: {
+    filePath: string;
+    retainedPaths?: string[];
+  }): Promise<{ deleted: boolean; reason?: string }> =>
+    ipcRenderer.invoke("ai:deleteGeneratedImage", payload),
+  cleanupGeneratedImages: (
+    retainedPaths: string[]
+  ): Promise<{
+    deletedCount: number;
+    deletedBytes: number;
+    storage: GeneratedImageStorageInfo;
+  }> => ipcRenderer.invoke("ai:cleanupGeneratedImages", retainedPaths),
   aiCancel: (requestId: string): Promise<{ ok: true }> =>
     ipcRenderer.invoke("ai:cancel", requestId)
 });

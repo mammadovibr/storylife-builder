@@ -2,9 +2,9 @@ import electron from "electron";
 import type { OpenDialogOptions } from "electron";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
-import { access, copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { basename, dirname, extname, join } from "node:path";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import isDev from "electron-is-dev";
 import {
@@ -15,7 +15,7 @@ import {
 import { CAPY_3_STORY_REFERENCE } from "./storyReferenceLibrary.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol } = electron;
+const { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol, shell } = electron;
 const LOCAL_MEDIA_SCHEME = "storylife-media";
 const remoteDebuggingPort = process.env.STORYLIFE_REMOTE_DEBUGGING_PORT;
 const smokeResultPath = process.env.STORYLIFE_SMOKE_RESULT;
@@ -1460,6 +1460,116 @@ ipcMain.handle("ai:cancel", async (_event, requestId: string) => {
 
   return { ok: true as const };
 });
+
+function getGeneratedImagesDirectory(): string {
+  return join(app.getPath("userData"), "ai-generated-images");
+}
+
+function normalizeManagedImagePath(filePath: string): string {
+  return resolve(filePath.startsWith("file://") ? fileURLToPath(filePath) : filePath);
+}
+
+function normalizePathForComparison(filePath: string): string {
+  const normalized = resolve(filePath);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+function isManagedGeneratedImage(filePath: string): boolean {
+  if (!filePath.trim()) return false;
+  try {
+    const root = normalizePathForComparison(getGeneratedImagesDirectory());
+    const candidate = normalizePathForComparison(normalizeManagedImagePath(filePath));
+    return candidate.startsWith(`${root}${sep}`);
+  } catch {
+    return false;
+  }
+}
+
+async function getGeneratedImageStorageInfo() {
+  const folderPath = getGeneratedImagesDirectory();
+  await mkdir(folderPath, { recursive: true });
+  const entries = await readdir(folderPath, { withFileTypes: true });
+  const files = entries.filter((entry) => entry.isFile());
+  const sizes = await Promise.all(
+    files.map(async (entry) => (await stat(join(folderPath, entry.name))).size)
+  );
+  return {
+    folderPath,
+    fileCount: files.length,
+    totalBytes: sizes.reduce((total, size) => total + size, 0)
+  };
+}
+
+ipcMain.handle("ai:getGeneratedImageStorageInfo", async () =>
+  getGeneratedImageStorageInfo()
+);
+
+ipcMain.handle("ai:openGeneratedImageFolder", async () => {
+  const folderPath = getGeneratedImagesDirectory();
+  await mkdir(folderPath, { recursive: true });
+  const error = await shell.openPath(folderPath);
+  if (error) throw new Error(error);
+  return { ok: true as const };
+});
+
+ipcMain.handle(
+  "ai:deleteGeneratedImage",
+  async (_event, payload: { filePath: string; retainedPaths?: string[] }) => {
+    if (!isManagedGeneratedImage(payload.filePath)) {
+      return { deleted: false as const, reason: "outside-managed-folder" as const };
+    }
+    const candidate = normalizeManagedImagePath(payload.filePath);
+    const retainedPaths = new Set(
+      (payload.retainedPaths ?? [])
+        .filter(isManagedGeneratedImage)
+        .map((filePath) => normalizePathForComparison(normalizeManagedImagePath(filePath)))
+    );
+    if (retainedPaths.has(normalizePathForComparison(candidate))) {
+      return { deleted: false as const, reason: "still-used" as const };
+    }
+    try {
+      await unlink(candidate);
+      return { deleted: true as const };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { deleted: false as const, reason: "missing" as const };
+      }
+      throw error;
+    }
+  }
+);
+
+ipcMain.handle(
+  "ai:cleanupGeneratedImages",
+  async (_event, retainedPaths: string[] = []) => {
+    const folderPath = getGeneratedImagesDirectory();
+    await mkdir(folderPath, { recursive: true });
+    const retained = new Set(
+      retainedPaths
+        .filter(isManagedGeneratedImage)
+        .map((filePath) => normalizePathForComparison(normalizeManagedImagePath(filePath)))
+    );
+    const entries = await readdir(folderPath, { withFileTypes: true });
+    let deletedCount = 0;
+    let deletedBytes = 0;
+
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const filePath = join(folderPath, entry.name);
+      if (retained.has(normalizePathForComparison(filePath))) continue;
+      const fileStats = await stat(filePath);
+      await unlink(filePath);
+      deletedCount += 1;
+      deletedBytes += fileStats.size;
+    }
+
+    return {
+      deletedCount,
+      deletedBytes,
+      storage: await getGeneratedImageStorageInfo()
+    };
+  }
+);
 
 ipcMain.handle(
   "ai:generateSceneImage",
@@ -3153,7 +3263,7 @@ async function callOpenAIImage({
     throw new Error("OpenAI did not return an image.");
   }
 
-  const imagesDir = join(app.getPath("userData"), "ai-generated-images");
+  const imagesDir = getGeneratedImagesDirectory();
   await mkdir(imagesDir, { recursive: true });
   const filePath = join(
     imagesDir,

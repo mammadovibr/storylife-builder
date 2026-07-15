@@ -553,6 +553,39 @@ export function getActiveSceneImageVariant(scene: Scene): SceneImageVariant | nu
   );
 }
 
+export function removeSceneImageVariant(scene: Scene, variantId: string): Scene {
+  const removedIndex = scene.imageVariants.findIndex((variant) => variant.id === variantId);
+  if (removedIndex < 0) return scene;
+
+  const removedVariant = scene.imageVariants[removedIndex];
+  const imageVariants = scene.imageVariants.filter((variant) => variant.id !== variantId);
+  const removedActiveVariant =
+    scene.activeImageVariantId === variantId || scene.imagePath === removedVariant.imagePath;
+
+  if (!removedActiveVariant) {
+    return {
+      ...scene,
+      imageVariants
+    };
+  }
+
+  const replacement = imageVariants[Math.min(removedIndex, imageVariants.length - 1)] ?? null;
+  return {
+    ...scene,
+    imagePath: replacement?.imagePath ?? "",
+    visualMediaType: "image",
+    imageVariants,
+    activeImageVariantId: replacement?.id ?? "",
+    imageGenerationPrompt: replacement?.prompt ?? scene.imageGenerationPrompt,
+    imageGenerationReferenceIds: replacement
+      ? [...replacement.referenceIds]
+      : scene.imageGenerationReferenceIds,
+    imageGenerationUseReferences: replacement
+      ? replacement.useReferences
+      : scene.imageGenerationUseReferences
+  };
+}
+
 export function createChoice(
   targetNodeId: SceneId,
   id = "choice_1"
