@@ -344,6 +344,12 @@ airplane-mode startup and all 12 cached build files.
 - `will-change` is active only during a scene transition. AnimXYZ transitions render
   exactly two scene layers and remove the outgoing one after completion. Page turn
   no longer renders a third static incoming scene under the two book pages.
+- Page turn has an anti-flash handoff for image-heavy scenes. The currently visible
+  scene DOM is preserved as a keyed underlay while StPageFlip initializes. The book
+  waits for the outgoing image `decode()`/video data (capped at 220ms), paints two
+  preparation frames, removes the underlay, and only then starts bending the page.
+  Do not replace this with an immediate remount; that caused a one-frame blink on
+  some large scene images.
 - A slowed page-turn smoke test confirmed StPageFlip created the temporary soft
   reverse page, kept the next scene below it, and removed the transition host after
   completion. The old white triangle and separately animated page fragment no

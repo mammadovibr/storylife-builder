@@ -3320,6 +3320,12 @@ textarea {
   pointer-events: none;
 }
 
+.scene-pageflip-underlay {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
 .scene-transition-stage.is-preview .scene-pageflip-host,
 .scene-transition-stage.is-preview .scene-pageflip-book {
   width: 390px;

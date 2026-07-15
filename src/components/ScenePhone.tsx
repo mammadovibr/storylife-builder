@@ -26,7 +26,12 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
   const { project, scene, visibleChoices, onChoice, displayMode = "preview" } = props;
   const latestSnapshotRef = useRef<ScenePhoneSnapshot>({ scene, visibleChoices });
   const transitionTimerRef = useRef<number | null>(null);
+  const [incoming, setIncoming] = useState<ScenePhoneSnapshot>(() => ({
+    scene,
+    visibleChoices
+  }));
   const [outgoing, setOutgoing] = useState<ScenePhoneSnapshot | null>(null);
+  const [isPageFlipReady, setPageFlipReady] = useState(false);
   const [transitionRevision, setTransitionRevision] = useState(0);
   const sceneTransition = resolveSceneTransition(project, scene);
   const animXyzPreset = getAnimXyzPreset(sceneTransition);
@@ -40,12 +45,16 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
 
   useLayoutEffect(() => {
     const previousSnapshot = latestSnapshotRef.current;
-    latestSnapshotRef.current = { scene, visibleChoices };
+    const nextSnapshot = { scene, visibleChoices };
+    latestSnapshotRef.current = nextSnapshot;
     if (previousSnapshot.scene.id === scene.id) {
+      setIncoming(nextSnapshot);
       return;
     }
 
+    setIncoming(nextSnapshot);
     setOutgoing(previousSnapshot);
+    setPageFlipReady(false);
     setTransitionRevision((revision) => revision + 1);
     if (transitionTimerRef.current !== null) {
       window.clearTimeout(transitionTimerRef.current);
@@ -74,16 +83,32 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
         "--scene-transition-duration": `${transitionDuration}ms`
       } as CSSProperties}
     >
+      {outgoing && sceneTransition === "pageTurn" && !isPageFlipReady && (
+        <div
+          className="scene-transition-layer scene-pageflip-underlay"
+          key={`scene-layer-${outgoing.scene.id}`}
+          aria-hidden="true"
+        >
+          <ScenePhone
+            project={project}
+            scene={outgoing.scene}
+            visibleChoices={outgoing.visibleChoices}
+            onChoice={onChoice}
+            displayMode={displayMode}
+          />
+        </div>
+      )}
       {outgoing &&
         (sceneTransition === "pageTurn" ? (
           <PageFlipSceneTransition
-            key={`page-turn-${outgoing.scene.id}-${scene.id}-${transitionRevision}`}
+            key={`page-turn-${outgoing.scene.id}-${incoming.scene.id}-${transitionRevision}`}
             project={project}
             outgoing={outgoing}
-            incoming={{ scene, visibleChoices }}
+            incoming={incoming}
             onChoice={onChoice}
             displayMode={displayMode}
             duration={transitionDuration}
+            onReady={() => setPageFlipReady(true)}
           />
         ) : (
           <div
@@ -109,12 +134,12 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
           className={`scene-transition-layer is-incoming ${
             outgoing && animXyzPreset ? "xyz-in" : ""
           }`}
-          key={`incoming-${scene.id}-${transitionRevision}`}
+          key={`scene-layer-${incoming.scene.id}`}
         >
           <ScenePhone
             project={project}
-            scene={scene}
-            visibleChoices={visibleChoices}
+            scene={incoming.scene}
+            visibleChoices={incoming.visibleChoices}
             onChoice={onChoice}
             displayMode={displayMode}
           />
@@ -131,6 +156,7 @@ interface PageFlipSceneTransitionProps {
   onChoice: (choice: Choice) => void;
   displayMode: "preview" | "export";
   duration: number;
+  onReady: () => void;
 }
 
 interface PageFlipHandle {
@@ -147,9 +173,11 @@ function PageFlipSceneTransition({
   incoming,
   onChoice,
   displayMode,
-  duration
+  duration,
+  onReady
 }: PageFlipSceneTransitionProps) {
   const bookRef = useRef<PageFlipHandle | null>(null);
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const [pageSize, setPageSize] = useState(() => getPageFlipSize(displayMode));
 
   useLayoutEffect(() => {
@@ -168,7 +196,7 @@ function PageFlipSceneTransition({
   }, [displayMode]);
 
   return (
-    <div className="scene-pageflip-host" aria-hidden="true">
+    <div ref={hostRef} className="scene-pageflip-host" aria-hidden="true">
       <HTMLFlipBook
         key={`${pageSize.width}x${pageSize.height}`}
         ref={bookRef}
@@ -197,9 +225,12 @@ function PageFlipSceneTransition({
         disableFlipByClick
         renderOnlyPageLengthChange
         onInit={() => {
-          window.requestAnimationFrame(() => {
+          void waitForPageFlipMedia(hostRef.current).then(() => {
             window.requestAnimationFrame(() => {
-              bookRef.current?.pageFlip()?.flipNext("bottom");
+              onReady();
+              window.requestAnimationFrame(() => {
+                bookRef.current?.pageFlip()?.flipNext("bottom");
+              });
             });
           });
         }}
@@ -243,6 +274,35 @@ function getPageFlipSize(displayMode: "preview" | "export") {
     width: 390,
     height: Math.max(1, Math.min(760, window.innerHeight - 170))
   };
+}
+
+async function waitForPageFlipMedia(host: HTMLDivElement | null) {
+  const outgoingImage = host?.querySelector<HTMLImageElement>(
+    ".scene-pageflip-page img"
+  );
+  if (outgoingImage && typeof outgoingImage.decode === "function") {
+    await Promise.race([
+      outgoingImage.decode().catch(() => undefined),
+      waitForPageFlipMediaTimeout()
+    ]);
+  }
+
+  const outgoingVideo = host?.querySelector<HTMLVideoElement>(
+    ".scene-pageflip-page video"
+  );
+  if (outgoingVideo && outgoingVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        outgoingVideo.addEventListener("loadeddata", () => resolve(), { once: true });
+        outgoingVideo.addEventListener("error", () => resolve(), { once: true });
+      }),
+      waitForPageFlipMediaTimeout()
+    ]);
+  }
+}
+
+function waitForPageFlipMediaTimeout() {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, 220));
 }
 
 interface ScenePhoneProps {
