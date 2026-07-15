@@ -42,8 +42,6 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
     sceneTransition,
     resolveSceneTransitionSpeed(project, scene)
   );
-  const shouldPlayIncomingImageAnimation =
-    sceneTransition !== "pageTurn" || !outgoing || isPageFlipReady;
 
   useLayoutEffect(() => {
     const previousSnapshot = latestSnapshotRef.current;
@@ -106,6 +104,7 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
             key={`page-turn-${outgoing.scene.id}-${incoming.scene.id}-${transitionRevision}`}
             project={project}
             outgoing={outgoing}
+            incoming={incoming}
             onChoice={onChoice}
             displayMode={displayMode}
             duration={transitionDuration}
@@ -153,7 +152,6 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
           visibleChoices={incoming.visibleChoices}
           onChoice={onChoice}
           displayMode={displayMode}
-          imageAnimationPlaying={shouldPlayIncomingImageAnimation}
         />
       </div>
     </div>
@@ -163,6 +161,7 @@ export function TransitionedScenePhone(props: ScenePhoneProps) {
 interface PageFlipSceneTransitionProps {
   project: StoryProject;
   outgoing: ScenePhoneSnapshot;
+  incoming: ScenePhoneSnapshot;
   onChoice: (choice: Choice) => void;
   displayMode: "preview" | "export";
   duration: number;
@@ -181,6 +180,7 @@ interface PageFlipHandle {
 function PageFlipSceneTransition({
   project,
   outgoing,
+  incoming,
   onChoice,
   displayMode,
   duration,
@@ -263,10 +263,15 @@ function PageFlipSceneTransition({
             displayMode={displayMode}
           />
         </div>
-        <div
-          className="scene-pageflip-page scene-pageflip-transparent-page"
-          data-density="soft"
-        />
+        <div className="scene-pageflip-page" data-density="soft">
+          <ScenePhone
+            project={project}
+            scene={incoming.scene}
+            visibleChoices={incoming.visibleChoices}
+            onChoice={onChoice}
+            displayMode={displayMode}
+          />
+        </div>
       </HTMLFlipBook>
     </div>
   );

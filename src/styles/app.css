@@ -3363,10 +3363,6 @@ textarea {
   contain: layout paint style;
 }
 
-.scene-pageflip-transparent-page {
-  background: transparent !important;
-}
-
 .scene-pageflip-page > .scene-live-preview-phone {
   width: 100%;
   height: 100%;

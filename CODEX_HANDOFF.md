@@ -350,13 +350,18 @@ airplane-mode startup and all 12 cached build files.
   preparation frames, removes the underlay, and only then starts bending the page.
   Do not replace this with an immediate remount; that caused a one-frame blink on
   some large scene images.
-- The incoming scene is one persistent layer underneath PageFlip's transparent
-  bottom page. Its image animation is held on its exact first keyframe during book
-  preparation, starts when the corner begins moving, and keeps the same DOM and
-  animation instance after the book reports `changeState: read`. This lets zoom/pan
-  animation remain visible beneath the turning page without restarting or jumping
-  when the page lands. A browser QA run measured a continuous zoom scale sequence:
-  `1.00066, 1.00332, 1.00814, 1.0151, 1.02366, 1.03362, 1.04308` across the handoff.
+- The incoming scene is rendered both as StPageFlip's actual bottom page and as a
+  persistent layer underneath the book. Both image animations start together. The
+  real bottom page is therefore visible while the old page bends; when the book
+  reports `changeState: read`, it disappears and reveals the already-progressed
+  persistent scene without restarting its animation. Do not make the book bottom
+  page transparent: StPageFlip's temporary outgoing copy then covers the persistent
+  layer until the very end, so the old scene appears throughout the turn.
+- A contrast browser QA used red `OLD` and blue `NEW` scenes. Mid-turn DOM and a
+  screenshot confirmed the clipped visible bottom page contained `NEW BLUE
+  ANIMATED`. Book/persistent zoom scales matched within 0.00031 (`1.00919` vs
+  `1.00888`), then the persistent scale continued `1.01608, 1.02483, 1.03487`
+  after the book was removed, with no reset.
 - A slowed page-turn smoke test confirmed StPageFlip created the temporary soft
   reverse page, kept the next scene below it, and removed the transition host after
   completion. The old white triangle and separately animated page fragment no
